@@ -531,6 +531,25 @@
         </div>
       </div>
 
+      <!-- SSD Cache Card -->
+      <div class="glass-card" id="ssdCacheCard" style="display: none;">
+        <div class="card-header">
+          <span>SSD Write Cache</span>
+          <i class="fa-solid fa-bolt" style="color: #fbbf24;"></i>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="ssdCacheProgress" class="progress-bar-fill" style="width: 0%; background: linear-gradient(90deg, #fbbf24, #f59e0b);"></div>
+        </div>
+        <div class="stat-row">
+          <span>Đã dùng: <strong id="ssdCacheUsed">-</strong></span>
+          <span>Trống: <strong id="ssdCacheFree">-</strong></span>
+        </div>
+        <div class="stat-row" style="margin-top: 0.4rem;">
+          <span>Giới hạn Cache: <strong id="ssdCacheLimit">-</strong></span>
+          <span><strong id="ssdCachePercent" style="color: #fbbf24;">0%</strong></span>
+        </div>
+      </div>
+
       <!-- Performance Card -->
       <div class="glass-card">
         <div class="card-header">
@@ -706,6 +725,19 @@
         document.getElementById('diskProgress').style.width = data.disk.percent + '%';
         document.getElementById('cpuPercent').innerText = data.cpu.percent + '%';
         document.getElementById('ramPercent').innerText = data.memory.percent + '%';
+
+        // Hiển thị SSD Cache nếu được cấu hình
+        const ssdCard = document.getElementById('ssdCacheCard');
+        if (data.ssd_cache) {
+          document.getElementById('ssdCacheUsed').innerText = data.ssd_cache.used;
+          document.getElementById('ssdCacheFree').innerText = data.ssd_cache.free;
+          document.getElementById('ssdCacheLimit').innerText = data.ssd_cache.max_limit_gb + ' GB';
+          document.getElementById('ssdCachePercent').innerText = data.ssd_cache.percent + '%';
+          document.getElementById('ssdCacheProgress').style.width = data.ssd_cache.percent + '%';
+          ssdCard.style.display = 'block';
+        } else {
+          ssdCard.style.display = 'none';
+        }
       } catch (e) {
         console.error(e);
       }
