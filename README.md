@@ -13,7 +13,7 @@ A lightweight, self-hosted **Home NAS (Network Attached Storage)** system design
 - **🎨 Modern Dark Glassmorphism Web UI**: Responsive file browser with breadcrumbs, file type icons, and smooth transitions.
 - **📊 Real-time Hardware Metrics**: Live monitoring for Disk Usage (Total, Used, Free), CPU %, and RAM %.
 - **📂 Full File Management**: Browse directories, upload files via drag & drop, download files, create folders, and delete items.
-- **💻 Native Network Drive Mapping (Samba SMB)**: Map your Home Server storage directly in **Windows File Explorer** (`\\server-ip\HomeNAS-Storage`) and **Mac Finder** (`smb://server-ip/HomeNAS-Storage`).
+- **💻 Native Network Drive Mapping (Samba SMB)**: Map your Home Server storage directly in **Windows File Explorer** (`\\server-ip\HomeNAS-SSD` or `\\server-ip\HomeNAS-HDD`) and **Mac Finder** (`smb://server-ip/HomeNAS-SSD`).
 - **🐳 Docker 1-Click Deployment**: Containerized setup with `docker-compose`.
 
 ---
@@ -33,8 +33,8 @@ docker-compose up -d
 
 ### 3. Access your NAS
 - **Web UI**: Open `http://<your-server-ip>:8080` in your browser.
-- **Windows Explorer Mapping**: Press `Win + E`, right-click **This PC** -> **Map network drive**, type `\\<your-server-ip>\HomeNAS-Storage` (User: `admin`, Password: `naspassword123`).
-- **Mac Finder**: In Finder, press `Cmd + K`, type `smb://<your-server-ip>/HomeNAS-Storage`.
+- **Windows Explorer Mapping**: Press `Win + E`, right-click **This PC** -> **Map network drive**, type `\\<your-server-ip>\HomeNAS-SSD` (or `\\<your-server-ip>\HomeNAS-HDD`) with user `admin` and password `naspassword123`.
+- **Mac Finder**: In Finder, press `Cmd + K`, type `smb://<your-server-ip>/HomeNAS-SSD` (or `smb://<your-server-ip>/HomeNAS-HDD`).
 
 ---
 
