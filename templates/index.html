@@ -3,22 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HomeNAS Server - Quản lý File Lưu Trữ</title>
+  <title>HomeNAS Server - Visual File Manager</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     :root {
-      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
-      --glass-bg: rgba(30, 41, 59, 0.7);
-      --glass-border: rgba(255, 255, 255, 0.1);
+      --bg-gradient: radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                     radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.15) 0%, transparent 40%),
+                     #0f172a;
+      --glass-bg: rgba(30, 41, 59, 0.65);
+      --glass-hover: rgba(51, 65, 85, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.08);
       --accent: #6366f1;
       --accent-hover: #4f46e5;
-      --accent-glow: rgba(99, 102, 241, 0.35);
+      --accent-glow: rgba(99, 102, 241, 0.4);
+      --purple-glow: rgba(168, 85, 247, 0.4);
       --text-main: #f8fafc;
       --text-muted: #94a3b8;
-      --card-bg: rgba(15, 23, 42, 0.6);
       --danger: #ef4444;
       --success: #10b981;
     }
@@ -32,16 +35,19 @@
     body {
       font-family: 'Inter', sans-serif;
       background: var(--bg-gradient);
+      background-attachment: fixed;
       color: var(--text-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow-x: hidden;
     }
 
     /* Header */
     header {
       background: var(--glass-bg);
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       border-bottom: 1px solid var(--glass-border);
       padding: 1rem 2rem;
       display: flex;
@@ -55,47 +61,49 @@
     .logo-area {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 1rem;
     }
 
     .logo-icon {
-      background: linear-gradient(135deg, #6366f1, #a855f7);
+      background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
       color: white;
-      width: 42px;
-      height: 42px;
-      border-radius: 12px;
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.25rem;
-      box-shadow: 0 0 15px var(--accent-glow);
+      font-size: 1.3rem;
+      box-shadow: 0 0 20px var(--accent-glow);
     }
 
     .logo-title {
-      font-size: 1.25rem;
-      font-weight: 700;
-      letter-spacing: -0.5px;
+      font-size: 1.3rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, #ffffff, #cbd5e1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
 
-    /* Main Container */
+    /* Main Grid Layout */
     .container {
-      max-width: 1400px;
+      max-width: 1500px;
       width: 100%;
       margin: 0 auto;
-      padding: 1.5rem;
+      padding: 1.75rem;
       flex: 1;
       display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 1.5rem;
+      grid-template-columns: 300px 1fr;
+      gap: 1.75rem;
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 1024px) {
       .container {
         grid-template-columns: 1fr;
       }
     }
 
-    /* Sidebar / Dashboard Stats */
+    /* Sidebar Components */
     .sidebar {
       display: flex;
       flex-direction: column;
@@ -105,182 +113,240 @@
     .glass-card {
       background: var(--glass-bg);
       backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      padding: 1.25rem;
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      border-radius: 20px;
+      padding: 1.5rem;
+      box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.35);
+      transition: border-color 0.3s ease;
+    }
+
+    .glass-card:hover {
+      border-color: rgba(255, 255, 255, 0.15);
     }
 
     .card-header {
-      font-size: 0.9rem;
-      font-weight: 600;
+      font-size: 0.95rem;
+      font-weight: 700;
       color: var(--text-muted);
-      margin-bottom: 1rem;
+      margin-bottom: 1.25rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
     .progress-bar-bg {
-      background: rgba(255, 255, 255, 0.1);
-      height: 10px;
+      background: rgba(255, 255, 255, 0.07);
+      height: 12px;
       border-radius: 10px;
       overflow: hidden;
-      margin: 0.5rem 0;
+      margin: 0.75rem 0;
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     .progress-bar-fill {
       background: linear-gradient(90deg, #6366f1, #a855f7);
       height: 100%;
       border-radius: 10px;
-      transition: width 0.5s ease;
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 12px var(--purple-glow);
     }
 
     .stat-row {
       display: flex;
       justify-content: space-between;
-      font-size: 0.85rem;
+      font-size: 0.88rem;
       color: var(--text-muted);
       margin-top: 0.5rem;
     }
 
-    /* Action Buttons */
+    .stat-row strong {
+      color: var(--text-main);
+    }
+
+    /* Buttons */
     .btn-group {
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
+      gap: 0.85rem;
     }
 
     .btn {
-      background: var(--accent);
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
       color: white;
       border: none;
-      padding: 0.75rem 1.25rem;
-      border-radius: 10px;
-      font-weight: 600;
+      padding: 0.85rem 1.5rem;
+      border-radius: 14px;
+      font-weight: 700;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 0.5rem;
-      transition: all 0.2s ease;
-      font-size: 0.9rem;
+      gap: 0.6rem;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      font-size: 0.95rem;
+      box-shadow: 0 4px 15px var(--accent-glow);
     }
 
     .btn:hover {
-      background: var(--accent-hover);
-      box-shadow: 0 0 15px var(--accent-glow);
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px var(--accent-glow);
     }
 
     .btn-secondary {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.06);
       color: var(--text-main);
       border: 1px solid var(--glass-border);
-    }
-
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.15);
       box-shadow: none;
     }
 
-    /* File Explorer Content Area */
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: none;
+    }
+
+    /* Explorer Content */
     .content-area {
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
     }
 
-    /* Breadcrumbs */
+    /* Controls Bar */
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
     .breadcrumb-bar {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.6rem;
       background: var(--glass-bg);
+      backdrop-filter: blur(16px);
       padding: 0.75rem 1.25rem;
-      border-radius: 12px;
+      border-radius: 14px;
       border: 1px solid var(--glass-border);
-      font-size: 0.9rem;
+      font-size: 0.92rem;
+      flex: 1;
     }
 
     .breadcrumb-item {
-      color: var(--accent);
+      color: #a5b4fc;
       cursor: pointer;
-      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.2s;
     }
 
     .breadcrumb-item:hover {
-      text-decoration: underline;
+      color: white;
     }
 
-    /* File Table / Grid */
+    .filter-tabs {
+      display: flex;
+      background: var(--glass-bg);
+      padding: 0.35rem;
+      border-radius: 12px;
+      border: 1px solid var(--glass-border);
+      gap: 0.25rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.5rem 0.9rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    /* File Table */
     .file-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.9rem;
+      font-size: 0.92rem;
     }
 
     .file-table th {
       text-align: left;
-      padding: 0.85rem 1rem;
+      padding: 1rem 1.25rem;
       color: var(--text-muted);
       border-bottom: 1px solid var(--glass-border);
-      font-weight: 600;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 0.5px;
     }
 
     .file-table td {
-      padding: 0.85rem 1rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
       vertical-align: middle;
     }
 
     .file-row {
-      transition: background 0.15s ease;
+      transition: background 0.2s ease;
       cursor: pointer;
     }
 
     .file-row:hover {
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.05);
     }
 
     .file-name-cell {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      font-weight: 500;
+      gap: 0.85rem;
+      font-weight: 600;
     }
 
     .file-icon {
-      font-size: 1.2rem;
-      width: 24px;
+      font-size: 1.35rem;
+      width: 28px;
       text-align: center;
     }
 
     .file-icon.folder { color: #f59e0b; }
     .file-icon.image { color: #ec4899; }
-    .file-icon.video { color: #8b5cf6; }
+    .file-icon.video { color: #a855f7; }
     .file-icon.audio { color: #10b981; }
     .file-icon.document { color: #3b82f6; }
     .file-icon.archive { color: #f97316; }
     .file-icon.file { color: #94a3b8; }
 
     .action-btn {
-      background: none;
-      border: none;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--glass-border);
       color: var(--text-muted);
       cursor: pointer;
-      padding: 0.4rem;
-      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      border-radius: 8px;
       transition: all 0.2s;
+      margin-left: 0.3rem;
     }
 
     .action-btn:hover {
       color: var(--text-main);
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.15);
     }
 
     .action-btn.delete:hover {
       color: var(--danger);
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.3);
     }
 
     /* Modal */
@@ -290,8 +356,8 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.75);
-      backdrop-filter: blur(8px);
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(12px);
       display: none;
       justify-content: center;
       align-items: center;
@@ -305,17 +371,17 @@
     .modal-box {
       background: #1e293b;
       border: 1px solid var(--glass-border);
-      border-radius: 16px;
-      padding: 1.5rem;
+      border-radius: 24px;
+      padding: 1.75rem;
       width: 90%;
-      max-width: 500px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      max-width: 520px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
     }
 
     .modal-header {
-      font-size: 1.1rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
+      font-size: 1.2rem;
+      font-weight: 800;
+      margin-bottom: 1.25rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -323,10 +389,10 @@
 
     .modal-body input {
       width: 100%;
-      padding: 0.75rem 1rem;
+      padding: 0.85rem 1.1rem;
       background: rgba(15, 23, 42, 0.8);
       border: 1px solid var(--glass-border);
-      border-radius: 8px;
+      border-radius: 12px;
       color: white;
       font-size: 0.95rem;
       margin-bottom: 1.25rem;
@@ -343,7 +409,6 @@
       gap: 0.75rem;
     }
 
-    /* Select option dark mode rule requirement */
     select.form-control option {
       background-color: #1e293b;
       color: #f8fafc;
@@ -358,22 +423,25 @@
       <div class="logo-icon"><i class="fa-solid fa-server"></i></div>
       <div>
         <div class="logo-title">HomeNAS Server</div>
-        <div style="font-size: 0.75rem; color: var(--text-muted);">Personal Cloud Storage</div>
+        <div style="font-size: 0.78rem; color: var(--text-muted); font-weight: 500;">Private Cloud Storage & Media Server</div>
       </div>
     </div>
     <div style="display: flex; gap: 1rem; align-items: center;">
-      <span style="font-size: 0.85rem; color: var(--text-muted);"><i class="fa-solid fa-signal" style="color: var(--success);"></i> Online</span>
+      <span style="font-size: 0.85rem; color: var(--text-muted); background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 0.35rem 0.85rem; border-radius: 20px;">
+        <i class="fa-solid fa-circle" style="color: var(--success); font-size: 0.6rem; margin-right: 0.3rem;"></i> NAS Online
+      </span>
     </div>
   </header>
 
-  <!-- Main Layout -->
+  <!-- Main Container -->
   <div class="container">
     <!-- Sidebar -->
     <aside class="sidebar">
+      <!-- Storage Meter Card -->
       <div class="glass-card">
         <div class="card-header">
-          <span>Dung lượng Ổ đĩa</span>
-          <i class="fa-solid fa-hard-drive"></i>
+          <span>Ổ đĩa hệ thống</span>
+          <i class="fa-solid fa-hard-drive" style="color: var(--accent);"></i>
         </div>
         <div class="progress-bar-bg">
           <div id="diskProgress" class="progress-bar-fill" style="width: 0%;"></div>
@@ -382,55 +450,69 @@
           <span>Đã dùng: <strong id="diskUsed">-</strong></span>
           <span>Trống: <strong id="diskFree">-</strong></span>
         </div>
-        <div class="stat-row" style="margin-top: 0.25rem;">
-          <span>Tổng số: <strong id="diskTotal">-</strong></span>
-          <span><strong id="diskPercent">0%</strong></span>
+        <div class="stat-row" style="margin-top: 0.4rem;">
+          <span>Tổng dung lượng: <strong id="diskTotal">-</strong></span>
+          <span><strong id="diskPercent" style="color: #a5b4fc;">0%</strong></span>
         </div>
       </div>
 
+      <!-- Performance Card -->
       <div class="glass-card">
         <div class="card-header">
-          <span>Hệ thống Server</span>
-          <i class="fa-solid fa-microchip"></i>
+          <span>Tải Server</span>
+          <i class="fa-solid fa-microchip" style="color: #a855f7;"></i>
         </div>
         <div class="stat-row">
-          <span>CPU:</span>
+          <span>CPU Usage:</span>
           <strong id="cpuPercent">0%</strong>
         </div>
         <div class="stat-row">
-          <span>RAM:</span>
+          <span>RAM Usage:</span>
           <strong id="ramPercent">0%</strong>
         </div>
       </div>
 
+      <!-- Actions -->
       <div class="btn-group">
-        <button class="btn" onclick="triggerUpload()"><i class="fa-solid fa-cloud-arrow-up"></i> Tải file lên</button>
+        <button class="btn" onclick="triggerUpload()"><i class="fa-solid fa-cloud-arrow-up"></i> Tải file lên NAS</button>
         <button class="btn btn-secondary" onclick="openMkdirModal()"><i class="fa-solid fa-folder-plus"></i> Tạo thư mục mới</button>
         <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)">
       </div>
     </aside>
 
-    <!-- Content Area -->
+    <!-- Explorer Main Area -->
     <main class="content-area">
-      <!-- Breadcrumb -->
-      <div class="breadcrumb-bar" id="breadcrumbBar">
-        <span class="breadcrumb-item" onclick="navigateTo('')"><i class="fa-solid fa-house"></i> Home</span>
+      <!-- Controls / Breadcrumb Bar -->
+      <div class="controls-bar">
+        <div class="breadcrumb-bar" id="breadcrumbBar">
+          <span class="breadcrumb-item" onclick="navigateTo('')"><i class="fa-solid fa-house"></i> Storage</span>
+        </div>
+
+        <div class="filter-tabs">
+          <button class="tab-btn active" onclick="filterCategory('all', this)">Tất cả</button>
+          <button class="tab-btn" onclick="filterCategory('image', this)">Ảnh</button>
+          <button class="tab-btn" onclick="filterCategory('video', this)">Video</button>
+          <button class="tab-btn" onclick="filterCategory('document', this)">Tài liệu</button>
+        </div>
       </div>
 
-      <!-- File Table Card -->
+      <!-- File List Table -->
       <div class="glass-card" style="padding: 0; overflow: hidden;">
         <table class="file-table">
           <thead>
             <tr>
               <th>Tên File / Thư mục</th>
-              <th style="width: 140px;">Kích thước</th>
-              <th style="width: 180px;">Ngày sửa</th>
-              <th style="width: 100px; text-align: right;">Hành động</th>
+              <th style="width: 140px;">Dung lượng</th>
+              <th style="width: 180px;">Ngày cập nhật</th>
+              <th style="width: 120px; text-align: right;">Hành động</th>
             </tr>
           </thead>
           <tbody id="fileList">
             <tr>
-              <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Đang tải danh sách...</td>
+              <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                <i class="fa-solid fa-spinner fa-spin" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i><br>
+                Đang nạp danh sách tệp tin...
+              </td>
             </tr>
           </tbody>
         </table>
@@ -443,13 +525,13 @@
     <div class="modal-box">
       <div class="modal-header">
         <span>Tạo thư mục mới</span>
-        <i class="fa-solid fa-xmark" style="cursor: pointer;" onclick="closeMkdirModal()"></i>
+        <i class="fa-solid fa-xmark" style="cursor: pointer; color: var(--text-muted);" onclick="closeMkdirModal()"></i>
       </div>
       <div class="modal-body">
         <input type="text" id="folderNameInput" placeholder="Nhập tên thư mục...">
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="closeMkdirModal()">Hủy</button>
+        <button class="btn btn-secondary" onclick="closeMkdirModal()">Hủy bỏ</button>
         <button class="btn" onclick="submitMkdir()">Tạo ngay</button>
       </div>
     </div>
@@ -457,6 +539,8 @@
 
   <script>
     let currentPath = "";
+    let allItems = [];
+    let currentFilter = "all";
 
     async function loadSystemStats() {
       try {
@@ -470,7 +554,7 @@
         document.getElementById('cpuPercent').innerText = data.cpu.percent + '%';
         document.getElementById('ramPercent').innerText = data.memory.percent + '%';
       } catch (e) {
-        console.error("Error loading system stats", e);
+        console.error(e);
       }
     }
 
@@ -481,57 +565,72 @@
         const res = await fetch(`/api/files?path=${encodeURIComponent(path)}`);
         if (!res.ok) throw new Error("Directory error");
         const data = await res.json();
-
-        const tbody = document.getElementById('fileList');
-        tbody.innerHTML = "";
-
-        if (data.items.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 2rem;">Thư mục trống</td></tr>`;
-          return;
-        }
-
-        data.items.forEach(item => {
-          const tr = document.createElement('tr');
-          tr.className = 'file-row';
-
-          let iconClass = 'fa-file file';
-          if (item.icon === 'folder') iconClass = 'fa-folder folder';
-          else if (item.icon === 'image') iconClass = 'fa-file-image image';
-          else if (item.icon === 'video') iconClass = 'fa-file-video video';
-          else if (item.icon === 'audio') iconClass = 'fa-file-audio audio';
-          else if (item.icon === 'archive') iconClass = 'fa-file-zipper archive';
-          else if (item.icon === 'document') iconClass = 'fa-file-lines document';
-
-          tr.innerHTML = `
-            <td>
-              <div class="file-name-cell" onclick="${item.is_dir ? `navigateTo('${item.path}')` : `downloadFile('${item.path}')`}">
-                <i class="fa-solid ${iconClass} file-icon ${item.icon}"></i>
-                <span>${item.name}</span>
-              </div>
-            </td>
-            <td>${item.size}</td>
-            <td>${item.modified}</td>
-            <td style="text-align: right;">
-              ${!item.is_dir ? `<button class="action-btn" onclick="downloadFile('${item.path}')" title="Tải về"><i class="fa-solid fa-download"></i></button>` : ''}
-              <button class="action-btn delete" onclick="deleteItem('${item.path}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
-
+        allItems = data.items;
+        renderFiles();
       } catch (e) {
         console.error(e);
       }
     }
 
+    function renderFiles() {
+      const tbody = document.getElementById('fileList');
+      tbody.innerHTML = "";
+
+      let filtered = allItems;
+      if (currentFilter !== "all") {
+        filtered = allItems.filter(item => item.is_dir || item.icon === currentFilter);
+      }
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem;">Thư mục trống</td></tr>`;
+        return;
+      }
+
+      filtered.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = 'file-row';
+
+        let iconClass = 'fa-file file';
+        if (item.icon === 'folder') iconClass = 'fa-folder folder';
+        else if (item.icon === 'image') iconClass = 'fa-file-image image';
+        else if (item.icon === 'video') iconClass = 'fa-file-video video';
+        else if (item.icon === 'audio') iconClass = 'fa-file-audio audio';
+        else if (item.icon === 'archive') iconClass = 'fa-file-zipper archive';
+        else if (item.icon === 'document') iconClass = 'fa-file-lines document';
+
+        tr.innerHTML = `
+          <td>
+            <div class="file-name-cell" onclick="${item.is_dir ? `navigateTo('${item.path}')` : `downloadFile('${item.path}')`}">
+              <i class="fa-solid ${iconClass} file-icon ${item.icon}"></i>
+              <span>${item.name}</span>
+            </div>
+          </td>
+          <td>${item.size}</td>
+          <td>${item.modified}</td>
+          <td style="text-align: right;">
+            ${!item.is_dir ? `<button class="action-btn" onclick="downloadFile('${item.path}')" title="Tải về"><i class="fa-solid fa-download"></i></button>` : ''}
+            <button class="action-btn delete" onclick="deleteItem('${item.path}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function filterCategory(cat, btn) {
+      currentFilter = cat;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderFiles();
+    }
+
     function updateBreadcrumb(path) {
       const bar = document.getElementById('breadcrumbBar');
-      bar.innerHTML = `<span class="breadcrumb-item" onclick="navigateTo('')"><i class="fa-solid fa-house"></i> Home</span>`;
+      bar.innerHTML = `<span class="breadcrumb-item" onclick="navigateTo('')"><i class="fa-solid fa-house"></i> Storage</span>`;
       
       if (!path) return;
       const parts = path.split('/');
       let accumulated = "";
-      parts.forEach((p, idx) => {
+      parts.forEach((p) => {
         if (!p) return;
         accumulated += (accumulated ? '/' : '') + p;
         const currentAccumulated = accumulated;
@@ -539,13 +638,8 @@
       });
     }
 
-    function navigateTo(path) {
-      loadFiles(path);
-    }
-
-    function triggerUpload() {
-      document.getElementById('fileInput').click();
-    }
+    function navigateTo(path) { loadFiles(path); }
+    function triggerUpload() { document.getElementById('fileInput').click(); }
 
     async function handleFileSelect(event) {
       const file = event.target.files[0];
@@ -556,19 +650,12 @@
       formData.append('path', currentPath);
 
       try {
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
         if (res.ok) {
           loadFiles(currentPath);
           loadSystemStats();
-        } else {
-          alert('Upload thất bại!');
         }
-      } catch (e) {
-        alert('Lỗi khi tải file!');
-      }
+      } catch (e) { alert('Upload lỗi!'); }
       event.target.value = '';
     }
 
@@ -584,15 +671,10 @@
           loadFiles(currentPath);
           loadSystemStats();
         }
-      } catch (e) {
-        alert('Không thể xóa item!');
-      }
+      } catch (e) { alert('Không thể xóa!'); }
     }
 
-    function openMkdirModal() {
-      document.getElementById('mkdirModal').classList.add('active');
-    }
-
+    function openMkdirModal() { document.getElementById('mkdirModal').classList.add('active'); }
     function closeMkdirModal() {
       document.getElementById('mkdirModal').classList.remove('active');
       document.getElementById('folderNameInput').value = '';
@@ -611,15 +693,10 @@
         if (res.ok) {
           closeMkdirModal();
           loadFiles(currentPath);
-        } else {
-          alert('Tạo thư mục thất bại!');
         }
-      } catch (e) {
-        alert('Lỗi tạo thư mục!');
-      }
+      } catch (e) { alert('Lỗi tạo thư mục!'); }
     }
 
-    // Initialize
     loadSystemStats();
     loadFiles("");
     setInterval(loadSystemStats, 10000);
