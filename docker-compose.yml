@@ -1,5 +1,6 @@
+version: '3.8'
+
 services:
-  # 1. HomeNAS Web Application (Giao diện Web Quản lý File Glassmorphism)
   homenas:
     build: .
     container_name: homenas_web
@@ -8,10 +9,18 @@ services:
       - "8080:8080"
     volumes:
       - /mnt/nas:/storage
+      - /tmp/homenas_ssd_cache:/ssd_cache
     environment:
       - STORAGE_DIR=/storage
+      - SSD_CACHE_DIR=/ssd_cache
+      - MAX_CACHE_SIZE_GB=32
+      - ADMIN_USER=admin
+      - ADMIN_PASS=naspassword123
+      - TOTP_SECRET=JBSWY3DPEHPK3PXP
+      - RESEND_API_KEY=re_JQ6uJLyg_5oUMtDYUn31v7sTPU2gHSNxi
+      - RESEND_FROM_EMAIL=Acme <onboarding@resend.dev>
+      - NOTIFY_EMAIL=delivered@resend.dev
 
-  # 2. Samba (SMB Server - Chia sẻ Ổ đĩa mạng)
   samba:
     image: dperson/samba:latest
     container_name: homenas_samba
@@ -23,7 +32,6 @@ services:
       - /mnt/nas:/mount/storage
     command: -s "HomeNAS-Storage;/mount/storage;yes;no;no;all;none;admin" -u "admin;naspassword123"
 
-  # 3. FileBrowser (Tùy chọn: Công cụ quản lý File chuẩn Open-Source)
   filebrowser:
     image: filebrowser/filebrowser:latest
     container_name: homenas_filebrowser

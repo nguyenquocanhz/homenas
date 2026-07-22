@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA, Resend Email Alert, Multipart Upload & SSD Cache Engine
+# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA, Resend Email Alert, Multipart Upload & SSD Cache Engine (Giới hạn 32GB)
 
 import os
 import json
@@ -26,7 +26,9 @@ except ImportError:
     email_templates = None
 
 STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
-SSD_CACHE_DIR = os.getenv("SSD_CACHE_DIR", "")  # Đường dẫn đệm SSD Cache (tùy chọn)
+SSD_CACHE_DIR = os.getenv("SSD_CACHE_DIR", "")  # Đường dẫn đệm SSD Cache
+MAX_CACHE_SIZE_GB = int(os.getenv("MAX_CACHE_SIZE_GB", "32")) # Giới hạn 32GB
+
 TMP_CHUNKS_DIR = os.path.join(SSD_CACHE_DIR if SSD_CACHE_DIR else STORAGE_DIR, ".tmp_chunks")
 
 os.makedirs(STORAGE_DIR, exist_ok=True)
@@ -42,17 +44,42 @@ TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 ACTIVE_SESSIONS = set()
 RESEND_CONFIG_FILE = "resend_config.json"
 
-app = FastAPI(title="HomeNAS Server", version="1.5.0")
+app = FastAPI(title="HomeNAS Server", version="1.6.0")
 templates = Jinja2Templates(directory="templates")
 
-# --- SSD Cache Background Sync Helper ---
+# --- SSD Cache Cleanup & Sync Helpers ---
+
+def clean_old_ssd_cache():
+    """Tự động kiểm tra và dọn dẹp SSD Cache nếu vượt quá giới hạn 32GB"""
+    if not SSD_CACHE_DIR or not os.path.exists(SSD_CACHE_DIR):
+        return
+    try:
+        total_size = sum(os.path.getsize(os.path.join(SSD_CACHE_DIR, f)) for f in os.listdir(SSD_CACHE_DIR) if os.path.isfile(os.path.join(SSD_CACHE_DIR, f)))
+        max_bytes = MAX_CACHE_SIZE_GB * 1024 * 1024 * 1024
+
+        if total_size > max_bytes:
+            # Xóa các file đệm cũ nhất đến khi dưới mức giới hạn
+            files = [os.path.join(SSD_CACHE_DIR, f) for f in os.listdir(SSD_CACHE_DIR) if os.path.isfile(os.path.join(SSD_CACHE_DIR, f))]
+            files.sort(key=os.path.getmtime)
+            for f in files:
+                try:
+                    os.remove(f)
+                    total_size -= os.path.getsize(f)
+                    if total_size <= max_bytes * 0.8: # Dọn về mức 80% dung lượng tối đa
+                        break
+                except Exception:
+                    continue
+    except Exception as e:
+        print(f"Lỗi dọn dẹp SSD Cache: {e}")
 
 def sync_ssd_cache_to_storage(cache_file_path: str, target_file_path: str):
-    """Chuyển file từ SSD Cache sang ổ đĩa HDD chính chạy ngầm"""
+    """Chuyển file từ SSD Cache sang ổ đĩa HDD chính chạy ngầm và dọn dẹp đệm"""
     try:
         shutil.move(cache_file_path, target_file_path)
     except Exception as e:
         print(f"Error syncing SSD cache: {e}")
+    finally:
+        clean_old_ssd_cache()
 
 # --- Resend Config Helpers ---
 
@@ -243,7 +270,7 @@ async def send_verification_email(request: Request, target_email: Optional[str] 
     except Exception as ex:
         raise HTTPException(status_code=500, detail=f"Gửi mail qua Resend thất bại: {str(ex)}")
 
-# --- Multipart Chunked Upload Engine & SSD Write Cache ---
+# --- Multipart Chunked Upload Engine & SSD Write Cache (Max 32GB) ---
 
 @app.post("/api/upload/init")
 async def init_multipart_upload(
@@ -254,6 +281,8 @@ async def init_multipart_upload(
 ):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    clean_old_ssd_cache()
 
     upload_id = f"up_{secrets.token_hex(8)}"
     upload_dir = os.path.join(TMP_CHUNKS_DIR, upload_id)
@@ -316,7 +345,6 @@ async def complete_multipart_upload(
     total_chunks = meta["total_chunks"]
 
     if SSD_CACHE_DIR and os.path.exists(SSD_CACHE_DIR):
-        # Nếu bật SSD Cache Buffer: Ghép file tốc độ cao vào SSD Cache trước
         cache_file_path = os.path.join(SSD_CACHE_DIR, f"{upload_id}_{meta['filename']}")
         with open(cache_file_path, "wb") as cache_file:
             for i in range(total_chunks):
@@ -324,10 +352,8 @@ async def complete_multipart_upload(
                 with open(part_path, "rb") as part_file:
                     shutil.copyfileobj(part_file, cache_file)
 
-        # Chuyển ngầm từ SSD sang Storage HDD chính
         background_tasks.add_task(sync_ssd_cache_to_storage, cache_file_path, str(final_file_path))
     else:
-        # Ghép trực tiếp vào Storage
         with open(final_file_path, "wb") as final_file:
             for i in range(total_chunks):
                 part_path = os.path.join(upload_dir, f"chunk_{i:05d}.part")
@@ -337,7 +363,7 @@ async def complete_multipart_upload(
     shutil.rmtree(upload_dir, ignore_errors=True)
 
     return {
-        "message": "Multipart upload completed with SSD Cache acceleration!",
+        "message": f"Multipart upload completed! Accelerated with SSD Cache (Max {MAX_CACHE_SIZE_GB}GB)",
         "filename": meta["filename"]
     }
 
@@ -364,7 +390,8 @@ async def get_system_stats(request: Request):
             "used": format_size(s_disk.used),
             "free": format_size(s_disk.free),
             "total": format_size(s_disk.total),
-            "percent": s_disk.percent
+            "percent": s_disk.percent,
+            "max_limit_gb": MAX_CACHE_SIZE_GB
         }
 
     return {
@@ -477,5 +504,5 @@ async def delete_item(request: Request, path: str = Query(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"HomeNAS Server v1.5.0 (SSD Write Cache Engine Enabled) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
+    print(f"HomeNAS Server v1.6.0 (SSD Cache Max Limit: {MAX_CACHE_SIZE_GB}GB) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
     uvicorn.run("app:app", host="0.0.0.0", port=8080, reload=True)
