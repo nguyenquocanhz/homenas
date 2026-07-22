@@ -11,14 +11,15 @@ services:
     environment:
       - STORAGE_DIR=/storage
 
-  # 2. Samba (SMB Server - Chia sẻ Ổ đĩa trực tiếp cho Windows Explorer & Mac Finder)
+  # 2. Samba (SMB Server - Chia sẻ Ổ đĩa mạng)
+  # Cổng 1390 và 4450 để tránh xung đột cổng 139/445 nếu Linux đã cài sẵn smbd
   samba:
     image: dperson/samba:latest
     container_name: homenas_samba
     restart: always
     ports:
-      - "139:139"
-      - "445:445"
+      - "1390:139"
+      - "4450:445"
     volumes:
       - ./data:/mount/storage
     command: -s "HomeNAS-Storage;/mount/storage;yes;no;no;all;none;admin" -u "admin;naspassword123"
