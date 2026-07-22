@@ -584,6 +584,30 @@
     </div>
   </div>
 
+  <!-- Video Player Streaming Modal -->
+  <div class="modal-overlay" id="videoModal">
+    <div class="modal-box" style="max-width: 900px; width: 95%;">
+      <div class="modal-header">
+        <span id="videoTitle"><i class="fa-solid fa-film" style="color: var(--accent);"></i> Xem Phim Direct Stream</span>
+        <i class="fa-solid fa-xmark" style="cursor: pointer; color: var(--text-muted);" onclick="closeVideoModal()"></i>
+      </div>
+      <div class="modal-body" style="padding: 10px; background: #000; text-align: center; border-radius: 8px;">
+        <video id="videoPlayer" controls autoplay style="width: 100%; max-height: 70vh; border-radius: 6px; outline: none;"></video>
+      </div>
+      <div class="modal-footer" style="justify-content: space-between;">
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Tốc độ phát:</span>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="changePlaybackSpeed(0.75)">0.75x</button>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="changePlaybackSpeed(1.0)">1.0x</button>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="changePlaybackSpeed(1.25)">1.25x</button>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="changePlaybackSpeed(1.5)">1.5x</button>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="changePlaybackSpeed(2.0)">2.0x</button>
+        </div>
+        <button class="btn" onclick="closeVideoModal()">Đóng Trình Phát</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentPath = "";
     let allItems = [];
@@ -635,28 +659,34 @@
 
       filtered.forEach(item => {
         const tr = document.createElement('tr');
-        tr.className = 'file-row';
+        let iconClass = 'fa-file';
+        if (item.is_dir) iconClass = 'fa-folder';
+        else if (item.icon === 'image') iconClass = 'fa-file-image';
+        else if (item.icon === 'video') iconClass = 'fa-file-video';
+        else if (item.icon === 'audio') iconClass = 'fa-file-audio';
+        else if (item.icon === 'archive') iconClass = 'fa-file-zipper';
+        else if (item.icon === 'document') iconClass = 'fa-file-lines';
 
-        let iconClass = 'fa-file file';
-        if (item.icon === 'folder') iconClass = 'fa-folder folder';
-        else if (item.icon === 'image') iconClass = 'fa-file-image image';
-        else if (item.icon === 'video') iconClass = 'fa-file-video video';
-        else if (item.icon === 'audio') iconClass = 'fa-file-audio audio';
-        else if (item.icon === 'archive') iconClass = 'fa-file-zipper archive';
-        else if (item.icon === 'document') iconClass = 'fa-file-lines document';
+        let nameClickAction = ``;
+        if (item.is_dir) {
+          nameClickAction = `onclick="navigateTo('${item.path}')" style="cursor: pointer; font-weight: 600;"`;
+        } else if (item.icon === 'video') {
+          nameClickAction = `onclick="openVideoModal('${item.path}', '${item.name}')" style="cursor: pointer; font-weight: 600; color: var(--accent);"`;
+        }
+
+        const videoBtn = item.icon === 'video' ? `<button class="action-btn" title="Xem Phim Stream" onclick="openVideoModal('${item.path}', '${item.name}')"><i class="fa-solid fa-play"></i></button>` : '';
 
         tr.innerHTML = `
           <td>
-            <div class="file-name-cell" onclick="${item.is_dir ? `navigateTo('${item.path}')` : `downloadFile('${item.path}')`}">
-              <i class="fa-solid ${iconClass} file-icon ${item.icon}"></i>
-              <span>${item.name}</span>
-            </div>
+            <i class="fa-solid ${iconClass} file-icon ${item.is_dir ? 'folder' : ''}"></i>
+            <span ${nameClickAction}>${item.name}</span>
           </td>
           <td>${item.size}</td>
           <td>${item.modified}</td>
-          <td style="text-align: right;">
-            ${!item.is_dir ? `<button class="action-btn" onclick="downloadFile('${item.path}')" title="Tải về"><i class="fa-solid fa-download"></i></button>` : ''}
-            <button class="action-btn delete" onclick="deleteItem('${item.path}')" title="Xóa"><i class="fa-solid fa-trash"></i></button>
+          <td>
+            ${videoBtn}
+            ${!item.is_dir ? `<button class="action-btn" title="Tải về" onclick="downloadFile('${item.path}')"><i class="fa-solid fa-download"></i></button>` : ''}
+            <button class="action-btn delete" title="Xóa" onclick="deleteItem('${item.path}')"><i class="fa-solid fa-trash"></i></button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -871,6 +901,30 @@
           alert("❌ Gửi mail thất bại: " + (data.detail || "Lỗi không xác định"));
         }
       } catch (e) { alert("Lỗi gửi email xác thực!"); }
+    }
+
+    function openVideoModal(path, name) {
+      const modal = document.getElementById('videoModal');
+      const titleElem = document.getElementById('videoTitle');
+      const videoPlayer = document.getElementById('videoPlayer');
+
+      titleElem.innerHTML = `<i class="fa-solid fa-film" style="color: var(--accent);"></i> ${name}`;
+      videoPlayer.src = `/api/stream?path=${encodeURIComponent(path)}`;
+      videoPlayer.playbackRate = 1.0;
+      modal.classList.add('active');
+    }
+
+    function closeVideoModal() {
+      const modal = document.getElementById('videoModal');
+      const videoPlayer = document.getElementById('videoPlayer');
+      videoPlayer.pause();
+      videoPlayer.src = "";
+      modal.classList.remove('active');
+    }
+
+    function changePlaybackSpeed(speed) {
+      const videoPlayer = document.getElementById('videoPlayer');
+      videoPlayer.playbackRate = speed;
     }
 
     async function handleLogout() {

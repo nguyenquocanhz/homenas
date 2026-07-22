@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA, Resend Email Alert, Multipart Upload & SSD Cache Engine (Giới hạn 32GB)
+# HomeNAS FastAPI Backend (app.py) với TOTP 2FA, Resend Email, Multipart Upload, SSD Cache & Video Streaming Engine (HTTP 206)
 
 import os
 import json
@@ -13,10 +13,11 @@ import secrets
 import random
 import asyncio
 import psutil
+import mimetypes
 from pathlib import Path
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Response, BackgroundTasks
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 try:
@@ -26,8 +27,8 @@ except ImportError:
     email_templates = None
 
 STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
-SSD_CACHE_DIR = os.getenv("SSD_CACHE_DIR", "")  # Đường dẫn đệm SSD Cache
-MAX_CACHE_SIZE_GB = int(os.getenv("MAX_CACHE_SIZE_GB", "32")) # Giới hạn 32GB
+SSD_CACHE_DIR = os.getenv("SSD_CACHE_DIR", "")
+MAX_CACHE_SIZE_GB = int(os.getenv("MAX_CACHE_SIZE_GB", "32"))
 
 TMP_CHUNKS_DIR = os.path.join(SSD_CACHE_DIR if SSD_CACHE_DIR else STORAGE_DIR, ".tmp_chunks")
 
@@ -36,7 +37,6 @@ os.makedirs(TMP_CHUNKS_DIR, exist_ok=True)
 if SSD_CACHE_DIR:
     os.makedirs(SSD_CACHE_DIR, exist_ok=True)
 
-# Thông tin tài khoản đăng nhập (mặc định)
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "naspassword123")
 TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP")
@@ -44,13 +44,12 @@ TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 ACTIVE_SESSIONS = set()
 RESEND_CONFIG_FILE = "resend_config.json"
 
-app = FastAPI(title="HomeNAS Server", version="1.6.0")
+app = FastAPI(title="HomeNAS Server", version="1.7.0")
 templates = Jinja2Templates(directory="templates")
 
 # --- SSD Cache Cleanup & Sync Helpers ---
 
 def clean_old_ssd_cache():
-    """Tự động kiểm tra và dọn dẹp SSD Cache nếu vượt quá giới hạn 32GB"""
     if not SSD_CACHE_DIR or not os.path.exists(SSD_CACHE_DIR):
         return
     try:
@@ -58,14 +57,13 @@ def clean_old_ssd_cache():
         max_bytes = MAX_CACHE_SIZE_GB * 1024 * 1024 * 1024
 
         if total_size > max_bytes:
-            # Xóa các file đệm cũ nhất đến khi dưới mức giới hạn
             files = [os.path.join(SSD_CACHE_DIR, f) for f in os.listdir(SSD_CACHE_DIR) if os.path.isfile(os.path.join(SSD_CACHE_DIR, f))]
             files.sort(key=os.path.getmtime)
             for f in files:
                 try:
                     os.remove(f)
                     total_size -= os.path.getsize(f)
-                    if total_size <= max_bytes * 0.8: # Dọn về mức 80% dung lượng tối đa
+                    if total_size <= max_bytes * 0.8:
                         break
                 except Exception:
                     continue
@@ -73,7 +71,6 @@ def clean_old_ssd_cache():
         print(f"Lỗi dọn dẹp SSD Cache: {e}")
 
 def sync_ssd_cache_to_storage(cache_file_path: str, target_file_path: str):
-    """Chuyển file từ SSD Cache sang ổ đĩa HDD chính chạy ngầm và dọn dẹp đệm"""
     try:
         shutil.move(cache_file_path, target_file_path)
     except Exception as e:
@@ -270,7 +267,70 @@ async def send_verification_email(request: Request, target_email: Optional[str] 
     except Exception as ex:
         raise HTTPException(status_code=500, detail=f"Gửi mail qua Resend thất bại: {str(ex)}")
 
-# --- Multipart Chunked Upload Engine & SSD Write Cache (Max 32GB) ---
+# --- Video Streaming Engine (HTTP 206 Partial Content Byte-Range Requests) ---
+
+@app.get("/api/stream")
+async def stream_video(request: Request, path: str = Query(...)):
+    """API Stream Video cho phép vừa xem vừa tua nhanh (Seek/Scrub) thông qua HTTP Range 206"""
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    target = get_safe_path(path)
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Video file not found")
+
+    file_size = target.stat().st_size
+    mime_type, _ = mimetypes.guess_type(target)
+    if not mime_type:
+        ext = target.suffix.lower()
+        if ext == ".mkv": mime_type = "video/x-matroska"
+        elif ext == ".mp4": mime_type = "video/mp4"
+        elif ext == ".webm": mime_type = "video/webm"
+        elif ext == ".mov": mime_type = "video/quicktime"
+        elif ext == ".avi": mime_type = "video/x-msvideo"
+        else: mime_type = "video/mp4"
+
+    range_header = request.headers.get("range")
+    
+    if range_header:
+        # Xử lý HTTP Range header (ví dụ: bytes=10485760-20971520)
+        bytes_type, bytes_range = range_header.split("=")
+        if bytes_type.strip() != "bytes":
+            raise HTTPException(status_code=416, detail="Requested Range Not Satisfiable")
+
+        start_str, end_str = bytes_range.split("-")
+        start = int(start_str) if start_str else 0
+        end = int(end_str) if end_str else file_size - 1
+
+        if start >= file_size or end >= file_size:
+            raise HTTPException(status_code=416, detail="Requested Range Not Satisfiable")
+
+        chunk_size = (end - start) + 1
+
+        def stream_generator():
+            with open(target, "rb") as f:
+                f.seek(start)
+                bytes_left = chunk_size
+                while bytes_left > 0:
+                    read_bytes = min(1024 * 1024, bytes_left) # Đọc từng block 1MB
+                    data = f.read(read_bytes)
+                    if not data:
+                        break
+                    bytes_left -= len(data)
+                    yield data
+
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(chunk_size),
+            "Content-Type": mime_type
+        }
+        return StreamingResponse(stream_generator(), status_code=206, headers=headers)
+    else:
+        # Nếu client không gửi Range header, trả về FileResponse tiêu chuẩn
+        return FileResponse(target, media_type=mime_type)
+
+# --- Multipart Chunked Upload Engine ---
 
 @app.post("/api/upload/init")
 async def init_multipart_upload(
@@ -504,5 +564,5 @@ async def delete_item(request: Request, path: str = Query(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"HomeNAS Server v1.6.0 (SSD Cache Max Limit: {MAX_CACHE_SIZE_GB}GB) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
+    print(f"HomeNAS Server v1.7.0 (Video Streaming Engine HTTP 206) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
     uvicorn.run("app:app", host="0.0.0.0", port=8080, reload=True)
