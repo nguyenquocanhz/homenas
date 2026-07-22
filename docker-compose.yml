@@ -25,6 +25,9 @@ services:
     image: dperson/samba:latest
     container_name: homenas_samba
     restart: always
+    environment:
+      - USERID=1000
+      - GROUPID=1000
     ports:
       - "139:139"
       - "445:445"
