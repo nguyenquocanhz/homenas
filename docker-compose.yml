@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # 1. HomeNAS Web Application (Giao diện Web Quản lý File Glassmorphism)
   homenas:
