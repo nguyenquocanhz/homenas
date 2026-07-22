@@ -463,12 +463,24 @@ async def get_system_stats(request: Request):
 
     ssd_stats = None
     if SSD_CACHE_DIR and os.path.exists(SSD_CACHE_DIR):
-        s_disk = psutil.disk_usage(SSD_CACHE_DIR)
+        try:
+            used_bytes = sum(
+                os.path.getsize(os.path.join(SSD_CACHE_DIR, f))
+                for f in os.listdir(SSD_CACHE_DIR)
+                if os.path.isfile(os.path.join(SSD_CACHE_DIR, f))
+            )
+        except Exception:
+            used_bytes = 0
+        
+        max_bytes = MAX_CACHE_SIZE_GB * 1024 * 1024 * 1024
+        free_bytes = max(0, max_bytes - used_bytes)
+        percent = round((used_bytes / max_bytes) * 100, 1) if max_bytes > 0 else 0.0
+
         ssd_stats = {
-            "used": format_size(s_disk.used),
-            "free": format_size(s_disk.free),
-            "total": format_size(s_disk.total),
-            "percent": s_disk.percent,
+            "used": format_size(used_bytes),
+            "free": format_size(free_bytes),
+            "total": format_size(max_bytes),
+            "percent": percent,
             "max_limit_gb": MAX_CACHE_SIZE_GB
         }
 
