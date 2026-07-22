@@ -409,9 +409,81 @@
       gap: 0.75rem;
     }
 
-    select.form-control option {
+    select.form-control option, #sortBySelect option {
       background-color: #1e293b;
       color: #f8fafc;
+    }
+
+    /* Grid Layout */
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 1.25rem;
+      padding: 1.5rem;
+    }
+
+    .grid-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 1.25rem 0.75rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .grid-item:hover {
+      transform: translateY(-4px);
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--accent);
+    }
+
+    .grid-item .file-icon {
+      font-size: 3rem;
+      display: block;
+      margin: 0 auto 0.75rem;
+      width: auto;
+    }
+
+    .grid-item .file-name {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-main);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 0.5rem;
+      word-break: break-all;
+      line-height: 1.3;
+      height: 2.3rem;
+    }
+
+    .grid-item .file-meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .grid-item .grid-actions {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      display: none;
+      gap: 4px;
+    }
+
+    .grid-item:hover .grid-actions {
+      display: flex;
+    }
+
+    .grid-item .grid-actions .action-btn {
+      padding: 3px 6px;
+      font-size: 0.75rem;
+      margin: 0;
+      border-radius: 6px;
     }
   </style>
 </head>
@@ -487,39 +559,47 @@
     <!-- Explorer Main Area -->
     <main class="content-area">
       <!-- Controls / Breadcrumb Bar -->
-      <div class="controls-bar">
-        <div class="breadcrumb-bar" id="breadcrumbBar">
+      <div class="controls-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+        <div class="breadcrumb-bar" id="breadcrumbBar" style="flex: 1; min-width: 200px;">
           <span class="breadcrumb-item" onclick="navigateTo('')"><i class="fa-solid fa-house"></i> Storage</span>
         </div>
 
-        <div class="filter-tabs">
-          <button class="tab-btn active" onclick="filterCategory('all', this)">Tất cả</button>
-          <button class="tab-btn" onclick="filterCategory('image', this)">Ảnh</button>
-          <button class="tab-btn" onclick="filterCategory('video', this)">Video</button>
-          <button class="tab-btn" onclick="filterCategory('document', this)">Tài liệu</button>
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+          <!-- Sort Selector -->
+          <div style="display: flex; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.25rem 0.5rem; align-items: center; gap: 0.35rem;">
+            <i class="fa-solid fa-arrow-down-a-z" style="color: var(--text-muted); font-size: 0.8rem; margin-left: 0.25rem;"></i>
+            <select id="sortBySelect" onchange="handleSortChange()" style="background: transparent; border: none; color: var(--text-main); font-size: 0.82rem; outline: none; font-weight: 600; cursor: pointer;">
+              <option value="name_asc">Tên (A-Z)</option>
+              <option value="name_desc">Tên (Z-A)</option>
+              <option value="size_asc">Dung lượng nhỏ trước</option>
+              <option value="size_desc">Dung lượng lớn trước</option>
+              <option value="date_desc">Mới cập nhật trước</option>
+              <option value="date_asc">Cũ hơn trước</option>
+            </select>
+          </div>
+
+          <!-- Filter Category Tabs -->
+          <div class="filter-tabs">
+            <button class="tab-btn active" onclick="filterCategory('all', this)">Tất cả</button>
+            <button class="tab-btn" onclick="filterCategory('image', this)">Ảnh</button>
+            <button class="tab-btn" onclick="filterCategory('video', this)">Video</button>
+            <button class="tab-btn" onclick="filterCategory('document', this)">Tài liệu</button>
+          </div>
+
+          <!-- View Toggle Switcher -->
+          <div style="display: flex; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 0.25rem;">
+            <button id="listViewBtn" class="tab-btn active" onclick="setViewMode('list')" style="padding: 0.4rem 0.6rem; border-radius: 8px;"><i class="fa-solid fa-list"></i></button>
+            <button id="gridViewBtn" class="tab-btn" onclick="setViewMode('grid')" style="padding: 0.4rem 0.6rem; border-radius: 8px;"><i class="fa-solid fa-table-cells-large"></i></button>
+          </div>
         </div>
       </div>
 
-      <!-- File List Table -->
-      <div class="glass-card" style="padding: 0; overflow: hidden;">
-        <table class="file-table">
-          <thead>
-            <tr>
-              <th>Tên File / Thư mục</th>
-              <th style="width: 140px;">Dung lượng</th>
-              <th style="width: 180px;">Ngày cập nhật</th>
-              <th style="width: 120px; text-align: right;">Hành động</th>
-            </tr>
-          </thead>
-          <tbody id="fileList">
-            <tr>
-              <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem;">
-                <i class="fa-solid fa-spinner fa-spin" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i><br>
-                Đang nạp danh sách tệp tin...
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <!-- Explorer Container -->
+      <div id="explorerContainer" class="glass-card" style="padding: 0; overflow: hidden; min-height: 200px;">
+        <div style="text-align: center; color: var(--text-muted); padding: 3rem;">
+          <i class="fa-solid fa-spinner fa-spin" style="font-size: 1.5rem; margin-bottom: 0.5rem;"></i><br>
+          Đang nạp danh sách tệp tin...
+        </div>
       </div>
     </main>
   </div>
@@ -612,6 +692,8 @@
     let currentPath = "";
     let allItems = [];
     let currentFilter = "all";
+    let viewMode = "list"; // 'list' hoặc 'grid'
+    let sortBy = "name_asc"; // 'name_asc', 'name_desc', 'size_asc', 'size_desc', 'date_desc', 'date_asc'
 
     async function loadSystemStats() {
       try {
@@ -643,9 +725,21 @@
       }
     }
 
+    function setViewMode(mode) {
+      viewMode = mode;
+      document.getElementById('listViewBtn').classList.toggle('active', mode === 'list');
+      document.getElementById('gridViewBtn').classList.toggle('active', mode === 'grid');
+      renderFiles();
+    }
+
+    function handleSortChange() {
+      sortBy = document.getElementById('sortBySelect').value;
+      renderFiles();
+    }
+
     function renderFiles() {
-      const tbody = document.getElementById('fileList');
-      tbody.innerHTML = "";
+      const container = document.getElementById('explorerContainer');
+      container.innerHTML = "";
 
       let filtered = allItems;
       if (currentFilter !== "all") {
@@ -653,49 +747,132 @@
       }
 
       if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 3rem;">Thư mục trống</td></tr>`;
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 4rem;">Thư mục trống</div>`;
         return;
       }
 
-      filtered.forEach(item => {
-        const tr = document.createElement('tr');
-        let iconClass = 'fa-file';
-        if (item.is_dir) iconClass = 'fa-folder';
-        else if (item.icon === 'image') iconClass = 'fa-file-image';
-        else if (item.icon === 'video') iconClass = 'fa-file-video';
-        else if (item.icon === 'audio') iconClass = 'fa-file-audio';
-        else if (item.icon === 'archive') iconClass = 'fa-file-zipper';
-        else if (item.icon === 'document') iconClass = 'fa-file-lines';
+      // Sắp xếp danh mục: Thư mục lên đầu, sau đó sắp xếp theo thuộc tính
+      filtered.sort((a, b) => {
+        if (a.is_dir && !b.is_dir) return -1;
+        if (!a.is_dir && b.is_dir) return 1;
 
-        let nameClickAction = ``;
-        if (item.is_dir) {
-          nameClickAction = `onclick="navigateTo('${item.path}')" style="cursor: pointer; font-weight: 600;"`;
-        } else if (item.icon === 'video') {
-          nameClickAction = `onclick="openVideoModal('${item.path}', '${item.name}')" style="cursor: pointer; font-weight: 600; color: var(--accent);"`;
+        if (sortBy === 'name_asc') {
+          return a.name.localeCompare(b.name);
+        } else if (sortBy === 'name_desc') {
+          return b.name.localeCompare(a.name);
+        } else if (sortBy === 'size_asc') {
+          return a.raw_size - b.raw_size;
+        } else if (sortBy === 'size_desc') {
+          return b.raw_size - a.raw_size;
+        } else if (sortBy === 'date_desc') {
+          return new Date(b.modified) - new Date(a.modified);
+        } else if (sortBy === 'date_asc') {
+          return new Date(a.modified) - new Date(b.modified);
         }
-
-        const videoBtn = item.icon === 'video' ? `<button class="action-btn" title="Xem Phim Stream" onclick="openVideoModal('${item.path}', '${item.name}')"><i class="fa-solid fa-play"></i></button>` : '';
-
-        tr.innerHTML = `
-          <td>
-            <i class="fa-solid ${iconClass} file-icon ${item.is_dir ? 'folder' : ''}"></i>
-            <span ${nameClickAction}>${item.name}</span>
-          </td>
-          <td>${item.size}</td>
-          <td>${item.modified}</td>
-          <td>
-            ${videoBtn}
-            ${!item.is_dir ? `<button class="action-btn" title="Tải về" onclick="downloadFile('${item.path}')"><i class="fa-solid fa-download"></i></button>` : ''}
-            <button class="action-btn delete" title="Xóa" onclick="deleteItem('${item.path}')"><i class="fa-solid fa-trash"></i></button>
-          </td>
-        `;
-        tbody.appendChild(tr);
+        return 0;
       });
+
+      if (viewMode === "list") {
+        // --- Render dạng List (Table) ---
+        const table = document.createElement('table');
+        table.className = "file-table";
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Tên File / Thư mục</th>
+              <th style="width: 140px;">Dung lượng</th>
+              <th style="width: 180px;">Ngày cập nhật</th>
+              <th style="width: 150px; text-align: right;">Hành động</th>
+            </tr>
+          </thead>
+          <tbody id="fileListBody"></tbody>
+        `;
+        container.appendChild(table);
+        const tbody = document.getElementById('fileListBody');
+
+        filtered.forEach(item => {
+          const tr = document.createElement('tr');
+          let iconClass = 'fa-file';
+          if (item.is_dir) iconClass = 'fa-folder';
+          else if (item.icon === 'image') iconClass = 'fa-file-image';
+          else if (item.icon === 'video') iconClass = 'fa-file-video';
+          else if (item.icon === 'audio') iconClass = 'fa-file-audio';
+          else if (item.icon === 'archive') iconClass = 'fa-file-zipper';
+          else if (item.icon === 'document') iconClass = 'fa-file-lines';
+
+          let nameClickAction = ``;
+          if (item.is_dir) {
+            nameClickAction = `onclick="navigateTo('${item.path}')" style="cursor: pointer; font-weight: 600;"`;
+          } else if (item.icon === 'video') {
+            nameClickAction = `onclick="openVideoModal('${item.path}', '${item.name}')" style="cursor: pointer; font-weight: 600; color: var(--accent);"`;
+          }
+
+          const videoBtn = item.icon === 'video' ? `<button class="action-btn" title="Xem Phim Stream" onclick="openVideoModal('${item.path}', '${item.name}')"><i class="fa-solid fa-play"></i></button>` : '';
+
+          tr.innerHTML = `
+            <td>
+              <i class="fa-solid ${iconClass} file-icon ${item.is_dir ? 'folder' : ''}"></i>
+              <span ${nameClickAction}>${item.name}</span>
+            </td>
+            <td>${item.size}</td>
+            <td>${item.modified}</td>
+            <td style="text-align: right;">
+              ${videoBtn}
+              ${!item.is_dir ? `<button class="action-btn" title="Tải về" onclick="downloadFile('${item.path}')"><i class="fa-solid fa-download"></i></button>` : ''}
+              <button class="action-btn delete" title="Xóa" onclick="deleteItem('${item.path}')"><i class="fa-solid fa-trash"></i></button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } else {
+        // --- Render dạng Grid (Thẻ Cards) ---
+        const gridDiv = document.createElement('div');
+        gridDiv.className = "grid-container";
+        container.appendChild(gridDiv);
+
+        filtered.forEach(item => {
+          const card = document.createElement('div');
+          card.className = "grid-item";
+
+          let iconClass = 'fa-file-lines';
+          if (item.is_dir) iconClass = 'fa-folder';
+          else if (item.icon === 'image') iconClass = 'fa-file-image';
+          else if (item.icon === 'video') iconClass = 'fa-file-video';
+          else if (item.icon === 'audio') iconClass = 'fa-file-audio';
+          else if (item.icon === 'archive') iconClass = 'fa-file-zipper';
+          else if (item.icon === 'document') iconClass = 'fa-file-lines';
+
+          let cardClickAction = "";
+          if (item.is_dir) {
+            cardClickAction = `onclick="navigateTo('${item.path}')"`;
+          } else if (item.icon === 'video') {
+            cardClickAction = `onclick="openVideoModal('${item.path}', '${item.name}')"`;
+          } else {
+            cardClickAction = `onclick="downloadFile('${item.path}')"`;
+          }
+
+          const videoBtn = item.icon === 'video' ? `<button class="action-btn" title="Xem Phim Stream" onclick="event.stopPropagation(); openVideoModal('${item.path}', '${item.name}')"><i class="fa-solid fa-play"></i></button>` : '';
+
+          card.innerHTML = `
+            <div ${cardClickAction} style="height: 100%;">
+              <i class="fa-solid ${iconClass} file-icon ${item.is_dir ? 'folder' : (item.icon || '')}"></i>
+              <div class="file-name" title="${item.name}">${item.name}</div>
+              <div class="file-meta">${item.size}</div>
+            </div>
+            <div class="grid-actions">
+              ${videoBtn}
+              ${!item.is_dir ? `<button class="action-btn" title="Tải về" onclick="event.stopPropagation(); downloadFile('${item.path}')"><i class="fa-solid fa-download"></i></button>` : ''}
+              <button class="action-btn delete" title="Xóa" onclick="event.stopPropagation(); deleteItem('${item.path}')"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          `;
+          gridDiv.appendChild(card);
+        });
+      }
     }
 
     function filterCategory(cat, btn) {
       currentFilter = cat;
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.filter-tabs .tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       renderFiles();
     }
