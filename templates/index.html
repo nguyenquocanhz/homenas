@@ -479,6 +479,7 @@
       <div class="btn-group">
         <button class="btn" onclick="triggerUpload()"><i class="fa-solid fa-cloud-arrow-up"></i> Tải file lên NAS</button>
         <button class="btn btn-secondary" onclick="openMkdirModal()"><i class="fa-solid fa-folder-plus"></i> Tạo thư mục mới</button>
+        <button class="btn btn-secondary" onclick="openResendModal()"><i class="fa-solid fa-envelope"></i> Cấu hình Email Alert (Resend)</button>
         <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelect(event)">
       </div>
     </aside>
@@ -536,6 +537,30 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeMkdirModal()">Hủy bỏ</button>
         <button class="btn" onclick="submitMkdir()">Tạo ngay</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resend Modal -->
+  <div class="modal-overlay" id="resendModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>Cấu hình Resend Email API</span>
+        <i class="fa-solid fa-xmark" style="cursor: pointer; color: var(--text-muted);" onclick="closeResendModal()"></i>
+      </div>
+      <div class="modal-body">
+        <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Resend API Key (re_...)</label>
+        <input type="text" id="resendApiKeyInput" placeholder="re_JQ6uJLyg_5oUMtDYUn31v7sTPU2gHSNxi">
+
+        <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">From Email người gửi</label>
+        <input type="text" id="resendFromEmailInput" placeholder="Acme <onboarding@resend.dev>">
+
+        <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Email nhận thông báo / xác thực</label>
+        <input type="text" id="resendNotifyEmailInput" placeholder="delivered@resend.dev">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="sendTestVerificationEmail()"><i class="fa-solid fa-paper-plane"></i> Gửi Mail Xác Thực Thử Nghiệm</button>
+        <button class="btn" onclick="saveResendConfig()"><i class="fa-solid fa-floppy-disk"></i> Lưu Cấu Hình</button>
       </div>
     </div>
   </div>
@@ -698,6 +723,63 @@
           loadFiles(currentPath);
         }
       } catch (e) { alert('Lỗi tạo thư mục!'); }
+    }
+
+    async function openResendModal() {
+      try {
+        const res = await fetch('/api/resend-config');
+        const data = await res.json();
+        document.getElementById('resendApiKeyInput').value = data.api_key || "";
+        document.getElementById('resendFromEmailInput').value = data.from_email || "Acme <onboarding@resend.dev>";
+        document.getElementById('resendNotifyEmailInput').value = data.notify_email || "delivered@resend.dev";
+        document.getElementById('resendModal').classList.add('active');
+      } catch (e) {
+        alert("Lỗi nạp cấu hình Resend!");
+      }
+    }
+
+    function closeResendModal() {
+      document.getElementById('resendModal').classList.remove('active');
+    }
+
+    async function saveResendConfig() {
+      const apiKey = document.getElementById('resendApiKeyInput').value.trim();
+      const fromEmail = document.getElementById('resendFromEmailInput').value.trim();
+      const notifyEmail = document.getElementById('resendNotifyEmailInput').value.trim();
+
+      if (!apiKey) { alert("Vui lòng nhập Resend API Key!"); return; }
+
+      const formData = new FormData();
+      formData.append('api_key', apiKey);
+      formData.append('from_email', fromEmail);
+      formData.append('notify_email', notifyEmail);
+
+      try {
+        const res = await fetch('/api/save-resend-config', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok) {
+          alert("✅ Đã lưu cấu hình Resend API thành công!");
+          closeResendModal();
+        } else {
+          alert("❌ Lỗi: " + (data.detail || "Không thể lưu!"));
+        }
+      } catch (e) { alert("Lỗi khi lưu cấu hình!"); }
+    }
+
+    async function sendTestVerificationEmail() {
+      const notifyEmail = document.getElementById('resendNotifyEmailInput').value.trim();
+      const formData = new FormData();
+      if (notifyEmail) formData.append('target_email', notifyEmail);
+
+      try {
+        const res = await fetch('/api/send-verification-email', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          alert(`🎉 ${data.message}\n\nMã xác thực 6 chữ số: [${data.code}]`);
+        } else {
+          alert("❌ Gửi mail thất bại: " + (data.detail || "Lỗi không xác định"));
+        }
+      } catch (e) { alert("Lỗi gửi email xác thực!"); }
     }
 
     async function handleLogout() {

@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA
+# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA và Resend Email Verification
 
 import os
+import json
 import time
 import hmac
 import struct
@@ -9,6 +10,7 @@ import base64
 import hashlib
 import shutil
 import secrets
+import random
 import psutil
 from pathlib import Path
 from typing import Optional
@@ -16,24 +18,54 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Reque
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+try:
+    from pyresend import Resend, templates as email_templates
+except ImportError:
+    Resend = None
+    email_templates = None
+
 STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
 # Thông tin tài khoản đăng nhập (mặc định)
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "naspassword123")
-TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP") # Base32 TOTP secret
+TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 
-# Lưu danh sách session token hợp lệ
 ACTIVE_SESSIONS = set()
+RESEND_CONFIG_FILE = "resend_config.json"
 
-app = FastAPI(title="HomeNAS Server", version="1.2.0")
+app = FastAPI(title="HomeNAS Server", version="1.3.0")
 templates = Jinja2Templates(directory="templates")
 
-# --- Helper TOTP 2FA (RFC 6238 Standard - Google Authenticator / Authy) ---
+# --- Resend Config Helpers ---
+
+def load_resend_config() -> dict:
+    if os.path.exists(RESEND_CONFIG_FILE):
+        try:
+            with open(RESEND_CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {
+        "api_key": os.getenv("RESEND_API_KEY", "re_JQ6uJLyg_5oUMtDYUn31v7sTPU2gHSNxi"),
+        "from_email": os.getenv("RESEND_FROM_EMAIL", "Acme <onboarding@resend.dev>"),
+        "notify_email": os.getenv("NOTIFY_EMAIL", "delivered@resend.dev")
+    }
+
+def save_resend_config_data(api_key: str, from_email: str, notify_email: str):
+    data = {
+        "api_key": api_key.strip(),
+        "from_email": from_email.strip(),
+        "notify_email": notify_email.strip()
+    }
+    with open(RESEND_CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return data
+
+# --- Helper TOTP 2FA ---
 
 def verify_totp(secret: str, code: str, window: int = 1) -> bool:
-    """Xác thực mã TOTP 6 chữ số theo chuẩn RFC 6238 (Google Authenticator)"""
     if not code or len(code) != 6 or not code.isdigit():
         return False
     try:
@@ -58,20 +90,17 @@ def verify_totp(secret: str, code: str, window: int = 1) -> bool:
     return False
 
 def is_authenticated(request: Request) -> bool:
-    """Kiểm tra session cookie"""
     session_token = request.cookies.get("session_token")
     return session_token in ACTIVE_SESSIONS if session_token else False
 
 def get_safe_path(rel_path: str) -> Path:
-    """Đảm bảo đường dẫn nằm trong STORAGE_DIR (Bảo mật path traversal)"""
     base = Path(STORAGE_DIR).resolve()
     target = (base / rel_path.lstrip("/\\")).resolve()
     if not str(target).startswith(str(base)):
-        raise HTTPException(status_code=403, detail="Access Denied: Path traversal detected")
+        raise HTTPException(status_code=403, detail="Access Denied")
     return target
 
 def format_size(bytes_size: int) -> str:
-    """Format dung lượng dạng KB, MB, GB"""
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes_size < 1024.0:
             return f"{bytes_size:.2f} {unit}"
@@ -102,9 +131,9 @@ async def api_login(
     token = secrets.token_hex(32)
     ACTIVE_SESSIONS.add(token)
 
-    response = JSONResponse({"success": True, "message": "Đăng nhập thành công!"})
-    response.set_cookie(key="session_token", value=token, httponly=True, max_age=86400*7) # 7 ngày
-    return response
+    res = JSONResponse({"success": True, "message": "Đăng nhập thành công!"})
+    res.set_cookie(key="session_token", value=token, httponly=True, max_age=86400*7)
+    return res
 
 @app.post("/api/logout")
 async def api_logout(request: Request, response: Response):
@@ -117,11 +146,88 @@ async def api_logout(request: Request, response: Response):
 
 @app.get("/api/totp-setup")
 async def get_totp_setup():
-    """Trả về Secret Key cho Google Authenticator / Authy"""
     return {
         "secret": TOTP_SECRET,
         "otpauth_url": f"otpauth://totp/HomeNAS:{ADMIN_USER}?secret={TOTP_SECRET}&issuer=HomeNAS"
     }
+
+# --- Resend Email Verification & Alert Routes ---
+
+@app.get("/api/resend-config")
+async def get_resend_config(request: Request):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+    cfg = load_resend_config()
+    # Mask API key for UI safety
+    masked_key = cfg["api_key"][:6] + "..." + cfg["api_key"][-4:] if len(cfg["api_key"]) > 10 else cfg["api_key"]
+    return {
+        "api_key": cfg["api_key"],
+        "masked_api_key": masked_key,
+        "from_email": cfg["from_email"],
+        "notify_email": cfg["notify_email"]
+    }
+
+@app.post("/api/save-resend-config")
+async def save_resend_config(
+    request: Request,
+    api_key: str = Form(...),
+    from_email: str = Form(...),
+    notify_email: str = Form(...)
+):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    if not api_key.startswith("re_"):
+        raise HTTPException(status_code=400, detail="Resend API Key phải bắt đầu bằng 're_'!")
+
+    save_resend_config_data(api_key, from_email, notify_email)
+    return {"message": "Đã lưu cấu hình Resend API thành công!"}
+
+@app.post("/api/send-verification-email")
+async def send_verification_email(request: Request, target_email: Optional[str] = Form(None)):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    if Resend is None:
+        raise HTTPException(status_code=500, detail="Thư viện pyresend chưa được cài đặt!")
+
+    cfg = load_resend_config()
+    to_email = target_email.strip() if target_email else cfg["notify_email"]
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp Email người nhận!")
+
+    code = f"{random.randint(100000, 999999)}"
+
+    # Tạo nội dung HTML Email Marketing qua pyresend templates
+    if email_templates:
+        html_content = email_templates.promotional(
+            title="Mã Xác Thực Bảo Mật HomeNAS",
+            discount_code=code,
+            discount_text="Mã xác thực 6 chữ số có hiệu lực trong 5 phút",
+            description="Bạn vừa yêu cầu mã xác thực email hoặc cảnh báo bảo mật từ hệ thống HomeNAS Server.",
+            button_text="Truy cập HomeNAS Server",
+            button_url="http://localhost:8080",
+            brand_name="HomeNAS Security"
+        )
+    else:
+        html_content = f"<h2>Mã xác thực HomeNAS: {code}</h2>"
+
+    try:
+        client = Resend(api_key=cfg["api_key"])
+        res = client.send_email(
+            from_email=cfg["from_email"],
+            to=to_email,
+            subject=f"🔐 Mã Xác Thực HomeNAS: [{code}]",
+            html=html_content
+        )
+        return {
+            "success": True,
+            "message": f"Đã gửi email xác thực tới {to_email} thành công!",
+            "email_id": res.get("id"),
+            "code": code
+        }
+    except Exception as ex:
+        raise HTTPException(status_code=500, detail=f"Gửi mail qua Resend thất bại: {str(ex)}")
 
 # --- Protected App Routes ---
 
@@ -244,5 +350,5 @@ async def delete_item(request: Request, path: str = Query(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"HomeNAS Server with TOTP 2FA running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
+    print(f"HomeNAS Server v1.3.0 running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
     uvicorn.run("app:app", host="0.0.0.0", port=8080, reload=True)
