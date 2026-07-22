@@ -7,11 +7,13 @@ services:
       - "8080:8080"
     volumes:
       - /mnt/nas:/storage
+      - /mnt/nas-hdd:/storage-hdd
       - /tmp/homenas_ssd_cache:/ssd_cache
     environment:
       - STORAGE_DIR=/storage
+      - STORAGE_HDD_DIR=/storage-hdd
       - SSD_CACHE_DIR=/ssd_cache
-      - MAX_CACHE_SIZE_GB=32
+      - MAX_CACHE_SIZE_GB=50
       - ADMIN_USER=admin
       - ADMIN_PASS=naspassword123
       - TOTP_SECRET=JBSWY3DPEHPK3PXP
@@ -27,8 +29,9 @@ services:
       - "1390:139"
       - "4450:445"
     volumes:
-      - /mnt/nas:/mount/storage
-    command: -s "HomeNAS-Storage;/mount/storage;yes;no;no;all;none;admin" -u "admin;naspassword123"
+      - /mnt/nas:/mount/storage-ssd
+      - /mnt/nas-hdd:/mount/storage-hdd
+    command: -s "HomeNAS-SSD;/mount/storage-ssd;yes;no;no;all;none;admin" -s "HomeNAS-HDD;/mount/storage-hdd;yes;no;no;all;none;admin" -u "admin;naspassword123"
 
   filebrowser:
     image: filebrowser/filebrowser:latest
@@ -37,6 +40,7 @@ services:
     ports:
       - "8081:80"
     volumes:
-      - /mnt/nas:/srv
+      - /mnt/nas:/srv/ssd
+      - /mnt/nas-hdd:/srv/hdd
       - ./filebrowser.db:/database/filebrowser.db
       - ./filebrowser.json:/.filebrowser.json

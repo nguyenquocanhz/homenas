@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# HomeNAS FastAPI Backend (app.py) với TOTP 2FA, Resend Email, Multipart Upload, SSD Cache & Video Streaming Engine (HTTP 206)
+# HomeNAS FastAPI Backend (app.py) với TOTP 2FA, Resend, Multipart Upload, SSD Cache (50GB) & Multi-Drive (SSD/HDD)
 
 import os
 import json
@@ -26,13 +26,16 @@ except ImportError:
     Resend = None
     email_templates = None
 
-STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+# Thư mục lưu trữ 2 phân vùng SSD và HDD
+STORAGE_SSD_DIR = os.getenv("STORAGE_DIR", "./storage")
+STORAGE_HDD_DIR = os.getenv("STORAGE_HDD_DIR", "./storage-hdd")
 SSD_CACHE_DIR = os.getenv("SSD_CACHE_DIR", "")
-MAX_CACHE_SIZE_GB = int(os.getenv("MAX_CACHE_SIZE_GB", "32"))
+MAX_CACHE_SIZE_GB = int(os.getenv("MAX_CACHE_SIZE_GB", "50")) # 50GB SSD Cache
 
-TMP_CHUNKS_DIR = os.path.join(SSD_CACHE_DIR if SSD_CACHE_DIR else STORAGE_DIR, ".tmp_chunks")
+TMP_CHUNKS_DIR = os.path.join(SSD_CACHE_DIR if SSD_CACHE_DIR else STORAGE_SSD_DIR, ".tmp_chunks")
 
-os.makedirs(STORAGE_DIR, exist_ok=True)
+os.makedirs(STORAGE_SSD_DIR, exist_ok=True)
+os.makedirs(STORAGE_HDD_DIR, exist_ok=True)
 os.makedirs(TMP_CHUNKS_DIR, exist_ok=True)
 if SSD_CACHE_DIR:
     os.makedirs(SSD_CACHE_DIR, exist_ok=True)
@@ -44,7 +47,7 @@ TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 ACTIVE_SESSIONS = set()
 RESEND_CONFIG_FILE = "resend_config.json"
 
-app = FastAPI(title="HomeNAS Server", version="1.7.0")
+app = FastAPI(title="HomeNAS Server", version="1.8.0")
 templates = Jinja2Templates(directory="templates")
 
 # --- SSD Cache Cleanup & Sync Helpers ---
@@ -134,11 +137,24 @@ def is_authenticated(request: Request) -> bool:
     return session_token in ACTIVE_SESSIONS if session_token else False
 
 def get_safe_path(rel_path: str) -> Path:
-    base = Path(STORAGE_DIR).resolve()
-    target = (base / rel_path.lstrip("/\\")).resolve()
-    if not str(target).startswith(str(base)):
-        raise HTTPException(status_code=403, detail="Access Denied")
-    return target
+    """Đảm bảo đường dẫn nằm trong STORAGE_SSD_DIR hoặc STORAGE_HDD_DIR"""
+    rel_path = rel_path.replace("\\", "/").strip("/")
+    if rel_path.startswith("ssd"):
+        base = Path(STORAGE_SSD_DIR).resolve()
+        sub = rel_path[3:].lstrip("/")
+        target = (base / sub).resolve()
+        if not str(target).startswith(str(base)):
+            raise HTTPException(status_code=403, detail="Access Denied: Path traversal detected")
+        return target
+    elif rel_path.startswith("hdd"):
+        base = Path(STORAGE_HDD_DIR).resolve()
+        sub = rel_path[3:].lstrip("/")
+        target = (base / sub).resolve()
+        if not str(target).startswith(str(base)):
+            raise HTTPException(status_code=403, detail="Access Denied: Path traversal detected")
+        return target
+    else:
+        raise HTTPException(status_code=400, detail="Không thể tạo file/thư mục ở thư mục gốc! Vui lòng truy cập SSD Storage hoặc HDD Storage.")
 
 def format_size(bytes_size: int) -> str:
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -267,11 +283,10 @@ async def send_verification_email(request: Request, target_email: Optional[str] 
     except Exception as ex:
         raise HTTPException(status_code=500, detail=f"Gửi mail qua Resend thất bại: {str(ex)}")
 
-# --- Video Streaming Engine (HTTP 206 Partial Content Byte-Range Requests) ---
+# --- Video Streaming Engine (HTTP 206) ---
 
 @app.get("/api/stream")
 async def stream_video(request: Request, path: str = Query(...)):
-    """API Stream Video cho phép vừa xem vừa tua nhanh (Seek/Scrub) thông qua HTTP Range 206"""
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
 
@@ -293,7 +308,6 @@ async def stream_video(request: Request, path: str = Query(...)):
     range_header = request.headers.get("range")
     
     if range_header:
-        # Xử lý HTTP Range header (ví dụ: bytes=10485760-20971520)
         bytes_type, bytes_range = range_header.split("=")
         if bytes_type.strip() != "bytes":
             raise HTTPException(status_code=416, detail="Requested Range Not Satisfiable")
@@ -312,7 +326,7 @@ async def stream_video(request: Request, path: str = Query(...)):
                 f.seek(start)
                 bytes_left = chunk_size
                 while bytes_left > 0:
-                    read_bytes = min(1024 * 1024, bytes_left) # Đọc từng block 1MB
+                    read_bytes = min(1024 * 1024, bytes_left)
                     data = f.read(read_bytes)
                     if not data:
                         break
@@ -327,7 +341,6 @@ async def stream_video(request: Request, path: str = Query(...)):
         }
         return StreamingResponse(stream_generator(), status_code=206, headers=headers)
     else:
-        # Nếu client không gửi Range header, trả về FileResponse tiêu chuẩn
         return FileResponse(target, media_type=mime_type)
 
 # --- Multipart Chunked Upload Engine ---
@@ -337,10 +350,14 @@ async def init_multipart_upload(
     request: Request,
     filename: str = Form(...),
     total_size: int = Form(...),
-    total_chunks: int = Form(...)
+    total_chunks: int = Form(...),
+    path: str = Form("")
 ):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    if not path.replace("\\", "/").strip("/"):
+        raise HTTPException(status_code=400, detail="Không thể tải file lên thư mục gốc! Vui lòng chọn SSD Storage hoặc HDD Storage.")
 
     clean_old_ssd_cache()
 
@@ -440,7 +457,8 @@ async def get_system_stats(request: Request):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
 
-    disk = psutil.disk_usage(STORAGE_DIR)
+    disk_ssd = psutil.disk_usage(STORAGE_SSD_DIR)
+    disk_hdd = psutil.disk_usage(STORAGE_HDD_DIR)
     mem = psutil.virtual_memory()
 
     ssd_stats = None
@@ -454,12 +472,13 @@ async def get_system_stats(request: Request):
             "max_limit_gb": MAX_CACHE_SIZE_GB
         }
 
+    # Trả về dung lượng gộp của cả 2 ổ làm dung lượng hệ thống chung
     return {
         "disk": {
-            "total": format_size(disk.total),
-            "used": format_size(disk.used),
-            "free": format_size(disk.free),
-            "percent": disk.percent
+            "total": format_size(disk_ssd.total + disk_hdd.total),
+            "used": format_size(disk_ssd.used + disk_hdd.used),
+            "free": format_size(disk_ssd.free + disk_hdd.free),
+            "percent": round(((disk_ssd.used + disk_hdd.used) / (disk_ssd.total + disk_hdd.total)) * 100, 1)
         },
         "ssd_cache": ssd_stats,
         "memory": {"percent": mem.percent},
@@ -471,11 +490,44 @@ async def list_files(request: Request, path: str = Query("")):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
 
+    path = path.replace("\\", "/").strip("/")
+
+    if not path:
+        # Danh mục ảo ở Thư mục gốc
+        return {
+            "current_path": "",
+            "items": [
+                {
+                    "name": "SSD Storage (150GB)",
+                    "path": "ssd",
+                    "is_dir": True,
+                    "size": "-",
+                    "raw_size": 0,
+                    "modified": "-",
+                    "ext": "",
+                    "icon": "folder"
+                },
+                {
+                    "name": "HDD Storage (357GB)",
+                    "path": "hdd",
+                    "is_dir": True,
+                    "size": "-",
+                    "raw_size": 0,
+                    "modified": "-",
+                    "ext": "",
+                    "icon": "folder"
+                }
+            ]
+        }
+
     target = get_safe_path(path)
     if not target.exists() or not target.is_dir():
         raise HTTPException(status_code=404, detail="Directory not found")
 
     items = []
+    base_dir = Path(STORAGE_SSD_DIR).resolve() if path.startswith("ssd") else Path(STORAGE_HDD_DIR).resolve()
+    prefix = "ssd/" if path.startswith("ssd") else "hdd/"
+
     for p in target.iterdir():
         try:
             if p.name.startswith("."):
@@ -492,7 +544,8 @@ async def list_files(request: Request, path: str = Query("")):
             elif ext in ["zip", "rar", "tar", "gz", "7z"]: icon_type = "archive"
             elif ext in ["pdf", "doc", "docx", "txt", "md"]: icon_type = "document"
 
-            rel_item_path = str(p.relative_to(Path(STORAGE_DIR).resolve())).replace("\\", "/")
+            # Ghép relative path chuẩn với prefix ssd/ hoặc hdd/
+            rel_item_path = prefix + str(p.relative_to(base_dir)).replace("\\", "/")
 
             items.append({
                 "name": p.name,
@@ -514,6 +567,9 @@ async def list_files(request: Request, path: str = Query("")):
 async def upload_file(request: Request, file: UploadFile = File(...), path: str = Form("")):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    if not path.replace("\\", "/").strip("/"):
+        raise HTTPException(status_code=400, detail="Không thể tải file lên thư mục gốc! Vui lòng chọn SSD Storage hoặc HDD Storage.")
 
     target_dir = get_safe_path(path)
     if not target_dir.exists() or not target_dir.is_dir():
@@ -540,6 +596,9 @@ async def create_directory(request: Request, name: str = Form(...), path: str = 
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
 
+    if not path.replace("\\", "/").strip("/"):
+        raise HTTPException(status_code=400, detail="Không thể tạo thư mục ở thư mục gốc! Vui lòng chọn SSD Storage hoặc HDD Storage.")
+
     target_dir = get_safe_path(path) / name
     if target_dir.exists():
         raise HTTPException(status_code=400, detail="Directory already exists")
@@ -550,6 +609,9 @@ async def create_directory(request: Request, name: str = Form(...), path: str = 
 async def delete_item(request: Request, path: str = Query(...)):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    if not path.replace("\\", "/").strip("/"):
+        raise HTTPException(status_code=400, detail="Không thể xóa ổ đĩa chính!")
 
     target = get_safe_path(path)
     if not target.exists():
@@ -564,5 +626,5 @@ async def delete_item(request: Request, path: str = Query(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"HomeNAS Server v1.7.0 (Video Streaming Engine HTTP 206) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
+    print(f"HomeNAS Server v1.8.0 (Multi-Drive & SSD Cache Buffer) running on port 8080.")
     uvicorn.run("app:app", host="0.0.0.0", port=8080, reload=True)
