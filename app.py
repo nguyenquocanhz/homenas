@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA và Resend Email Verification
+# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA, Resend Email Alert & Multipart Chunked Upload
 
 import os
 import json
@@ -25,7 +25,9 @@ except ImportError:
     email_templates = None
 
 STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
+TMP_CHUNKS_DIR = os.path.join(STORAGE_DIR, ".tmp_chunks")
 os.makedirs(STORAGE_DIR, exist_ok=True)
+os.makedirs(TMP_CHUNKS_DIR, exist_ok=True)
 
 # Thông tin tài khoản đăng nhập (mặc định)
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
@@ -35,7 +37,7 @@ TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 ACTIVE_SESSIONS = set()
 RESEND_CONFIG_FILE = "resend_config.json"
 
-app = FastAPI(title="HomeNAS Server", version="1.3.0")
+app = FastAPI(title="HomeNAS Server", version="1.4.0")
 templates = Jinja2Templates(directory="templates")
 
 # --- Resend Config Helpers ---
@@ -151,14 +153,13 @@ async def get_totp_setup():
         "otpauth_url": f"otpauth://totp/HomeNAS:{ADMIN_USER}?secret={TOTP_SECRET}&issuer=HomeNAS"
     }
 
-# --- Resend Email Verification & Alert Routes ---
+# --- Resend Email Routes ---
 
 @app.get("/api/resend-config")
 async def get_resend_config(request: Request):
     if not is_authenticated(request):
         raise HTTPException(status_code=401, detail="Unauthenticated")
     cfg = load_resend_config()
-    # Mask API key for UI safety
     masked_key = cfg["api_key"][:6] + "..." + cfg["api_key"][-4:] if len(cfg["api_key"]) > 10 else cfg["api_key"]
     return {
         "api_key": cfg["api_key"],
@@ -198,7 +199,6 @@ async def send_verification_email(request: Request, target_email: Optional[str] 
 
     code = f"{random.randint(100000, 999999)}"
 
-    # Tạo nội dung HTML Email Marketing qua pyresend templates
     if email_templates:
         html_content = email_templates.promotional(
             title="Mã Xác Thực Bảo Mật HomeNAS",
@@ -228,6 +228,94 @@ async def send_verification_email(request: Request, target_email: Optional[str] 
         }
     except Exception as ex:
         raise HTTPException(status_code=500, detail=f"Gửi mail qua Resend thất bại: {str(ex)}")
+
+# --- Multipart Chunked Upload Engine (Dành cho File cực lớn 10GB-100GB+) ---
+
+@app.post("/api/upload/init")
+async def init_multipart_upload(
+    request: Request,
+    filename: str = Form(...),
+    total_size: int = Form(...),
+    total_chunks: int = Form(...)
+):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    upload_id = f"up_{secrets.token_hex(8)}"
+    upload_dir = os.path.join(TMP_CHUNKS_DIR, upload_id)
+    os.makedirs(upload_dir, exist_ok=True)
+
+    info = {
+        "upload_id": upload_id,
+        "filename": filename,
+        "total_size": total_size,
+        "total_chunks": total_chunks,
+        "created_at": time.time()
+    }
+    with open(os.path.join(upload_dir, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump(info, f)
+
+    return {"upload_id": upload_id, "total_chunks": total_chunks}
+
+@app.post("/api/upload/chunk")
+async def upload_chunk(
+    request: Request,
+    upload_id: str = Form(...),
+    chunk_index: int = Form(...),
+    chunk_file: UploadFile = File(...)
+):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    upload_dir = os.path.join(TMP_CHUNKS_DIR, upload_id)
+    if not os.path.exists(upload_dir):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+
+    chunk_path = os.path.join(upload_dir, f"chunk_{chunk_index:05d}.part")
+    with open(chunk_path, "wb") as buffer:
+        shutil.copyfileobj(chunk_file.file, buffer)
+
+    return {"status": "ok", "chunk_index": chunk_index}
+
+@app.post("/api/upload/complete")
+async def complete_multipart_upload(
+    request: Request,
+    upload_id: str = Form(...),
+    path: str = Form("")
+):
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="Unauthenticated")
+
+    upload_dir = os.path.join(TMP_CHUNKS_DIR, upload_id)
+    meta_path = os.path.join(upload_dir, "meta.json")
+
+    if not os.path.exists(meta_path):
+        raise HTTPException(status_code=404, detail="Upload session not found")
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        meta = json.load(f)
+
+    target_dir = get_safe_path(path)
+    final_file_path = target_dir / meta["filename"]
+
+    # Ghép tất cả các file part theo thứ tự
+    total_chunks = meta["total_chunks"]
+    with open(final_file_path, "wb") as final_file:
+        for i in range(total_chunks):
+            part_path = os.path.join(upload_dir, f"chunk_{i:05d}.part")
+            if not os.path.exists(part_path):
+                raise HTTPException(status_code=400, detail=f"Thiếu chunk {i}!")
+            with open(part_path, "rb") as part_file:
+                shutil.copyfileobj(part_file, final_file)
+
+    # Xóa thư mục tạm sau khi ghép xong
+    shutil.rmtree(upload_dir, ignore_errors=True)
+
+    return {
+        "message": "Multipart upload completed successfully!",
+        "filename": meta["filename"],
+        "size": format_size(os.path.getsize(final_file_path))
+    }
 
 # --- Protected App Routes ---
 
@@ -267,6 +355,9 @@ async def list_files(request: Request, path: str = Query("")):
     items = []
     for p in target.iterdir():
         try:
+            if p.name.startswith("."):
+                continue  # Bỏ qua các file/thư mục ẩn như .tmp_chunks
+
             stat = p.stat()
             is_dir = p.is_dir()
             ext = p.suffix.lower().replace(".", "") if not is_dir else ""
@@ -350,5 +441,5 @@ async def delete_item(request: Request, path: str = Query(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"HomeNAS Server v1.3.0 running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
+    print(f"HomeNAS Server v1.4.0 (Multipart Chunked Upload Engine) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
     uvicorn.run("app:app", host="0.0.0.0", port=8080, reload=True)

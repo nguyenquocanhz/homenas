@@ -565,6 +565,25 @@
     </div>
   </div>
 
+  <!-- Multipart Upload Progress Modal -->
+  <div class="modal-overlay" id="uploadProgressModal">
+    <div class="modal-box" style="text-align: center;">
+      <div class="modal-header" style="justify-content: center;">
+        <span id="uploadModalTitle"><i class="fa-solid fa-cloud-arrow-up" style="color: var(--accent);"></i> Đang Tải File Cực Lớn (Multipart)</span>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.95rem; color: var(--text-main); font-weight: 600; margin-bottom: 0.5rem;" id="uploadFileName">-</p>
+        <div class="progress-bar-bg" style="height: 16px;">
+          <div id="uploadChunkProgress" class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">
+          <span id="uploadChunkStatus">Đang chuẩn bị...</span>
+          <span id="uploadPercentage">0%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     let currentPath = "";
     let allItems = [];
@@ -673,6 +692,79 @@
       const file = event.target.files[0];
       if (!file) return;
 
+      const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB Chunks
+      if (file.size > 10 * 1024 * 1024) {
+        await handleMultipartUpload(file, CHUNK_SIZE);
+      } else {
+        await handleNormalUpload(file);
+      }
+      event.target.value = '';
+    }
+
+    async function handleMultipartUpload(file, chunkSize) {
+      const modal = document.getElementById('uploadProgressModal');
+      const fileNameElem = document.getElementById('uploadFileName');
+      const progressBar = document.getElementById('uploadChunkProgress');
+      const statusElem = document.getElementById('uploadChunkStatus');
+      const percentElem = document.getElementById('uploadPercentage');
+
+      fileNameElem.innerText = `${file.name} (${(file.size / (1024*1024)).toFixed(1)} MB)`;
+      progressBar.style.width = '0%';
+      statusElem.innerText = 'Khởi tạo session upload...';
+      percentElem.innerText = '0%';
+      modal.classList.add('active');
+
+      const totalChunks = Math.ceil(file.size / chunkSize);
+
+      try {
+        const initForm = new FormData();
+        initForm.append('filename', file.name);
+        initForm.append('total_size', file.size);
+        initForm.append('total_chunks', totalChunks);
+
+        const initRes = await fetch('/api/upload/init', { method: 'POST', body: initForm });
+        if (!initRes.ok) throw new Error("Khởi tạo upload thất bại!");
+        const initData = await initRes.json();
+        const uploadId = initData.upload_id;
+
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * chunkSize;
+          const end = Math.min(file.size, start + chunkSize);
+          const chunkBlob = file.slice(start, end);
+
+          const chunkForm = new FormData();
+          chunkForm.append('upload_id', uploadId);
+          chunkForm.append('chunk_index', i);
+          chunkForm.append('chunk_file', chunkBlob, `chunk_${i}.part`);
+
+          statusElem.innerText = `Đang tải mảnh ${i + 1} / ${totalChunks}...`;
+
+          const chunkRes = await fetch('/api/upload/chunk', { method: 'POST', body: chunkForm });
+          if (!chunkRes.ok) throw new Error(`Lỗi tải mảnh ${i + 1}!`);
+
+          const percent = Math.round(((i + 1) / totalChunks) * 100);
+          progressBar.style.width = `${percent}%`;
+          percentElem.innerText = `${percent}%`;
+        }
+
+        statusElem.innerText = 'Đang hoàn tất ghép file...';
+        const compForm = new FormData();
+        compForm.append('upload_id', uploadId);
+        compForm.append('path', currentPath);
+
+        const compRes = await fetch('/api/upload/complete', { method: 'POST', body: compForm });
+        if (!compRes.ok) throw new Error("Ghép file thất bại!");
+
+        modal.classList.remove('active');
+        loadFiles(currentPath);
+        loadSystemStats();
+      } catch (err) {
+        alert("❌ Lỗi Multipart Upload: " + err.message);
+        modal.classList.remove('active');
+      }
+    }
+
+    async function handleNormalUpload(file) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('path', currentPath);
@@ -684,7 +776,6 @@
           loadSystemStats();
         }
       } catch (e) { alert('Upload lỗi!'); }
-      event.target.value = '';
     }
 
     function downloadFile(path) {
