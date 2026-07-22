@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đăng nhập - HomeNAS Server</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --bg-gradient: radial-gradient(circle at 50% 30%, rgba(99, 102, 241, 0.2) 0%, transparent 50%),
+                     radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.2) 0%, transparent 50%),
+                     #0f172a;
+      --glass-bg: rgba(30, 41, 59, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --accent-glow: rgba(99, 102, 241, 0.4);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 1.5rem;
+    }
+
+    .login-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .logo-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .logo-icon {
+      background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+      color: white;
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+      margin: 0 auto 1rem auto;
+      box-shadow: 0 0 25px var(--accent-glow);
+    }
+
+    .title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 0.3rem;
+    }
+
+    .subtitle {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .input-wrapper {
+      position: relative;
+    }
+
+    .input-wrapper i {
+      position: absolute;
+      left: 1rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 0.85rem 1rem 0.85rem 2.75rem;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      color: white;
+      font-size: 0.95rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    .totp-input {
+      letter-spacing: 4px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      text-align: center;
+      padding-left: 1rem;
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+      color: white;
+      border: none;
+      padding: 0.9rem;
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 1rem;
+      transition: all 0.25s;
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px var(--accent-glow);
+    }
+
+    .error-alert {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+      padding: 0.75rem 1rem;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      margin-bottom: 1.25rem;
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .setup-link {
+      text-align: center;
+      margin-top: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .setup-link a {
+      color: #a5b4fc;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .setup-link a:hover {
+      text-decoration: underline;
+    }
+
+    /* Modal 2FA Setup */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(12px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-box {
+      background: #1e293b;
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 1.75rem;
+      width: 90%;
+      max-width: 460px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="login-card">
+    <div class="logo-header">
+      <div class="logo-icon"><i class="fa-solid fa-shield-halved"></i></div>
+      <div class="title">HomeNAS Server</div>
+      <div class="subtitle">Đăng nhập Bảo mật TOTP 2FA</div>
+    </div>
+
+    <div class="error-alert" id="errorAlert">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+      <span id="errorMessage">Tài khoản hoặc mã TOTP 2FA không chính xác!</span>
+    </div>
+
+    <form onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label">Tên đăng nhập</label>
+        <div class="input-wrapper">
+          <i class="fa-solid fa-user"></i>
+          <input type="text" id="username" class="form-input" placeholder="admin" required value="admin">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Mật khẩu</label>
+        <div class="input-wrapper">
+          <i class="fa-solid fa-lock"></i>
+          <input type="password" id="password" class="form-input" placeholder="••••••••" required>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Mã Xác thực TOTP 2FA (6 chữ số)</label>
+        <div class="input-wrapper">
+          <i class="fa-solid fa-mobile-screen-button"></i>
+          <input type="text" id="totp_code" class="form-input totp-input" placeholder="000000" maxlength="6" required autocomplete="off">
+        </div>
+      </div>
+
+      <button type="submit" class="btn-submit"><i class="fa-solid fa-right-to-bracket"></i> Đăng Nhập</button>
+    </form>
+
+    <div class="setup-link">
+      Chưa cấu hình Google Authenticator? <a href="#" onclick="openSetupModal(); return false;">Xem mã QR 2FA Setup</a>
+    </div>
+  </div>
+
+  <!-- 2FA Setup Modal -->
+  <div class="modal-overlay" id="setupModal">
+    <div class="modal-box">
+      <h3 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem;">Cấu hình Google Authenticator</h3>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem;">
+        Nhập Secret Key bên dưới vào ứng dụng <strong>Google Authenticator</strong> hoặc <strong>Authy</strong>:
+      </p>
+      
+      <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--glass-border); padding: 0.85rem; border-radius: 12px; font-family: monospace; font-size: 1.1rem; font-weight: 700; letter-spacing: 2px; color: #a5b4fc; margin-bottom: 1.25rem;" id="totpSecretText">
+        Đang nạp secret...
+      </div>
+
+      <button class="btn-submit" style="margin-top: 0;" onclick="closeSetupModal()">Đóng</button>
+    </div>
+  </div>
+
+  <script>
+    async function handleLogin(e) {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const totp_code = document.getElementById('totp_code').value.trim();
+
+      const alertBox = document.getElementById('errorAlert');
+      alertBox.style.display = 'none';
+
+      try {
+        const formData = new FormData();
+        formData.append('username', username);
+        formData.append('password', password);
+        formData.append('totp_code', totp_code);
+
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          window.location.href = '/';
+        } else {
+          document.getElementById('errorMessage').innerText = data.detail || "Đăng nhập thất bại!";
+          alertBox.style.display = 'flex';
+        }
+      } catch (err) {
+        document.getElementById('errorMessage').innerText = "Lỗi kết nối máy chủ!";
+        alertBox.style.display = 'flex';
+      }
+    }
+
+    async function openSetupModal() {
+      try {
+        const res = await fetch('/api/totp-setup');
+        const data = await res.json();
+        document.getElementById('totpSecretText').innerText = data.secret;
+        document.getElementById('setupModal').classList.add('active');
+      } catch (e) {
+        alert("Lỗi nạp 2FA setup!");
+      }
+    }
+
+    function closeSetupModal() {
+      document.getElementById('setupModal').classList.remove('active');
+    }
+  </script>
+</body>
+</html>
