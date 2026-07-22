@@ -512,22 +512,41 @@
   <div class="container">
     <!-- Sidebar -->
     <aside class="sidebar">
-      <!-- Storage Meter Card -->
+      <!-- SSD Storage Card -->
       <div class="glass-card">
         <div class="card-header">
-          <span>Ổ đĩa hệ thống</span>
-          <i class="fa-solid fa-hard-drive" style="color: var(--accent);"></i>
+          <span>SSD Storage</span>
+          <i class="fa-solid fa-hard-drive" style="color: #6366f1;"></i>
         </div>
         <div class="progress-bar-bg">
-          <div id="diskProgress" class="progress-bar-fill" style="width: 0%;"></div>
+          <div id="ssdProgress" class="progress-bar-fill" style="width: 0%; background: linear-gradient(90deg, #6366f1, #3b82f6);"></div>
         </div>
         <div class="stat-row">
-          <span>Đã dùng: <strong id="diskUsed">-</strong></span>
-          <span>Trống: <strong id="diskFree">-</strong></span>
+          <span>Đã dùng: <strong id="ssdUsed">-</strong></span>
+          <span>Trống: <strong id="ssdFree">-</strong></span>
         </div>
         <div class="stat-row" style="margin-top: 0.4rem;">
-          <span>Tổng dung lượng: <strong id="diskTotal">-</strong></span>
-          <span><strong id="diskPercent" style="color: #a5b4fc;">0%</strong></span>
+          <span>Tổng: <strong id="ssdTotal">-</strong></span>
+          <span><strong id="ssdPercent" style="color: #a5b4fc;">0%</strong></span>
+        </div>
+      </div>
+
+      <!-- HDD Storage Card -->
+      <div class="glass-card">
+        <div class="card-header">
+          <span>HDD Storage</span>
+          <i class="fa-solid fa-database" style="color: #10b981;"></i>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="hddProgress" class="progress-bar-fill" style="width: 0%; background: linear-gradient(90deg, #10b981, #06b6d4);"></div>
+        </div>
+        <div class="stat-row">
+          <span>Đã dùng: <strong id="hddUsed">-</strong></span>
+          <span>Trống: <strong id="hddFree">-</strong></span>
+        </div>
+        <div class="stat-row" style="margin-top: 0.4rem;">
+          <span>Tổng: <strong id="hddTotal">-</strong></span>
+          <span><strong id="hddPercent" style="color: #a7f3d0;">0%</strong></span>
         </div>
       </div>
 
@@ -718,11 +737,20 @@
       try {
         const res = await fetch('/api/system');
         const data = await res.json();
-        document.getElementById('diskUsed').innerText = data.disk.used;
-        document.getElementById('diskFree').innerText = data.disk.free;
-        document.getElementById('diskTotal').innerText = data.disk.total;
-        document.getElementById('diskPercent').innerText = data.disk.percent + '%';
-        document.getElementById('diskProgress').style.width = data.disk.percent + '%';
+        // SSD Storage
+        document.getElementById('ssdUsed').innerText = data.ssd.used;
+        document.getElementById('ssdFree').innerText = data.ssd.free;
+        document.getElementById('ssdTotal').innerText = data.ssd.total;
+        document.getElementById('ssdPercent').innerText = data.ssd.percent + '%';
+        document.getElementById('ssdProgress').style.width = data.ssd.percent + '%';
+
+        // HDD Storage
+        document.getElementById('hddUsed').innerText = data.hdd.used;
+        document.getElementById('hddFree').innerText = data.hdd.free;
+        document.getElementById('hddTotal').innerText = data.hdd.total;
+        document.getElementById('hddPercent').innerText = data.hdd.percent + '%';
+        document.getElementById('hddProgress').style.width = data.hdd.percent + '%';
+
         document.getElementById('cpuPercent').innerText = data.cpu.percent + '%';
         document.getElementById('ramPercent').innerText = data.memory.percent + '%';
 

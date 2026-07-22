@@ -486,11 +486,17 @@ async def get_system_stats(request: Request):
 
     # Trả về dung lượng gộp của cả 2 ổ làm dung lượng hệ thống chung
     return {
-        "disk": {
-            "total": format_size(disk_ssd.total + disk_hdd.total),
-            "used": format_size(disk_ssd.used + disk_hdd.used),
-            "free": format_size(disk_ssd.free + disk_hdd.free),
-            "percent": round(((disk_ssd.used + disk_hdd.used) / (disk_ssd.total + disk_hdd.total)) * 100, 1)
+        "ssd": {
+            "total": format_size(disk_ssd.total),
+            "used": format_size(disk_ssd.used),
+            "free": format_size(disk_ssd.free),
+            "percent": disk_ssd.percent
+        },
+        "hdd": {
+            "total": format_size(disk_hdd.total),
+            "used": format_size(disk_hdd.used),
+            "free": format_size(disk_hdd.free),
+            "percent": disk_hdd.percent
         },
         "ssd_cache": ssd_stats,
         "memory": {"percent": mem.percent},
