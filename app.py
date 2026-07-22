@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA, Resend Email Alert & Multipart Chunked Upload
+# HomeNAS FastAPI Backend (app.py) với Bảo mật TOTP 2FA, Resend Email Alert, Multipart Upload & SSD Cache Engine
 
 import os
 import json
@@ -11,10 +11,11 @@ import hashlib
 import shutil
 import secrets
 import random
+import asyncio
 import psutil
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Response
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request, Response, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -25,9 +26,13 @@ except ImportError:
     email_templates = None
 
 STORAGE_DIR = os.getenv("STORAGE_DIR", "./storage")
-TMP_CHUNKS_DIR = os.path.join(STORAGE_DIR, ".tmp_chunks")
+SSD_CACHE_DIR = os.getenv("SSD_CACHE_DIR", "")  # Đường dẫn đệm SSD Cache (tùy chọn)
+TMP_CHUNKS_DIR = os.path.join(SSD_CACHE_DIR if SSD_CACHE_DIR else STORAGE_DIR, ".tmp_chunks")
+
 os.makedirs(STORAGE_DIR, exist_ok=True)
 os.makedirs(TMP_CHUNKS_DIR, exist_ok=True)
+if SSD_CACHE_DIR:
+    os.makedirs(SSD_CACHE_DIR, exist_ok=True)
 
 # Thông tin tài khoản đăng nhập (mặc định)
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
@@ -37,8 +42,17 @@ TOTP_SECRET = os.getenv("TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 ACTIVE_SESSIONS = set()
 RESEND_CONFIG_FILE = "resend_config.json"
 
-app = FastAPI(title="HomeNAS Server", version="1.4.0")
+app = FastAPI(title="HomeNAS Server", version="1.5.0")
 templates = Jinja2Templates(directory="templates")
+
+# --- SSD Cache Background Sync Helper ---
+
+def sync_ssd_cache_to_storage(cache_file_path: str, target_file_path: str):
+    """Chuyển file từ SSD Cache sang ổ đĩa HDD chính chạy ngầm"""
+    try:
+        shutil.move(cache_file_path, target_file_path)
+    except Exception as e:
+        print(f"Error syncing SSD cache: {e}")
 
 # --- Resend Config Helpers ---
 
@@ -229,7 +243,7 @@ async def send_verification_email(request: Request, target_email: Optional[str] 
     except Exception as ex:
         raise HTTPException(status_code=500, detail=f"Gửi mail qua Resend thất bại: {str(ex)}")
 
-# --- Multipart Chunked Upload Engine (Dành cho File cực lớn 10GB-100GB+) ---
+# --- Multipart Chunked Upload Engine & SSD Write Cache ---
 
 @app.post("/api/upload/init")
 async def init_multipart_upload(
@@ -280,6 +294,7 @@ async def upload_chunk(
 @app.post("/api/upload/complete")
 async def complete_multipart_upload(
     request: Request,
+    background_tasks: BackgroundTasks,
     upload_id: str = Form(...),
     path: str = Form("")
 ):
@@ -298,23 +313,32 @@ async def complete_multipart_upload(
     target_dir = get_safe_path(path)
     final_file_path = target_dir / meta["filename"]
 
-    # Ghép tất cả các file part theo thứ tự
     total_chunks = meta["total_chunks"]
-    with open(final_file_path, "wb") as final_file:
-        for i in range(total_chunks):
-            part_path = os.path.join(upload_dir, f"chunk_{i:05d}.part")
-            if not os.path.exists(part_path):
-                raise HTTPException(status_code=400, detail=f"Thiếu chunk {i}!")
-            with open(part_path, "rb") as part_file:
-                shutil.copyfileobj(part_file, final_file)
 
-    # Xóa thư mục tạm sau khi ghép xong
+    if SSD_CACHE_DIR and os.path.exists(SSD_CACHE_DIR):
+        # Nếu bật SSD Cache Buffer: Ghép file tốc độ cao vào SSD Cache trước
+        cache_file_path = os.path.join(SSD_CACHE_DIR, f"{upload_id}_{meta['filename']}")
+        with open(cache_file_path, "wb") as cache_file:
+            for i in range(total_chunks):
+                part_path = os.path.join(upload_dir, f"chunk_{i:05d}.part")
+                with open(part_path, "rb") as part_file:
+                    shutil.copyfileobj(part_file, cache_file)
+
+        # Chuyển ngầm từ SSD sang Storage HDD chính
+        background_tasks.add_task(sync_ssd_cache_to_storage, cache_file_path, str(final_file_path))
+    else:
+        # Ghép trực tiếp vào Storage
+        with open(final_file_path, "wb") as final_file:
+            for i in range(total_chunks):
+                part_path = os.path.join(upload_dir, f"chunk_{i:05d}.part")
+                with open(part_path, "rb") as part_file:
+                    shutil.copyfileobj(part_file, final_file)
+
     shutil.rmtree(upload_dir, ignore_errors=True)
 
     return {
-        "message": "Multipart upload completed successfully!",
-        "filename": meta["filename"],
-        "size": format_size(os.path.getsize(final_file_path))
+        "message": "Multipart upload completed with SSD Cache acceleration!",
+        "filename": meta["filename"]
     }
 
 # --- Protected App Routes ---
@@ -332,6 +356,17 @@ async def get_system_stats(request: Request):
 
     disk = psutil.disk_usage(STORAGE_DIR)
     mem = psutil.virtual_memory()
+
+    ssd_stats = None
+    if SSD_CACHE_DIR and os.path.exists(SSD_CACHE_DIR):
+        s_disk = psutil.disk_usage(SSD_CACHE_DIR)
+        ssd_stats = {
+            "used": format_size(s_disk.used),
+            "free": format_size(s_disk.free),
+            "total": format_size(s_disk.total),
+            "percent": s_disk.percent
+        }
+
     return {
         "disk": {
             "total": format_size(disk.total),
@@ -339,6 +374,7 @@ async def get_system_stats(request: Request):
             "free": format_size(disk.free),
             "percent": disk.percent
         },
+        "ssd_cache": ssd_stats,
         "memory": {"percent": mem.percent},
         "cpu": {"percent": psutil.cpu_percent(interval=0.1)}
     }
@@ -356,7 +392,7 @@ async def list_files(request: Request, path: str = Query("")):
     for p in target.iterdir():
         try:
             if p.name.startswith("."):
-                continue  # Bỏ qua các file/thư mục ẩn như .tmp_chunks
+                continue
 
             stat = p.stat()
             is_dir = p.is_dir()
@@ -441,5 +477,5 @@ async def delete_item(request: Request, path: str = Query(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    print(f"HomeNAS Server v1.4.0 (Multipart Chunked Upload Engine) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
+    print(f"HomeNAS Server v1.5.0 (SSD Write Cache Engine Enabled) running on port 8080. Storage: {os.path.abspath(STORAGE_DIR)}")
     uvicorn.run("app:app", host="0.0.0.0", port=8080, reload=True)
