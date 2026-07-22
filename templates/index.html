@@ -960,6 +960,7 @@
         initForm.append('filename', file.name);
         initForm.append('total_size', file.size);
         initForm.append('total_chunks', totalChunks);
+        initForm.append('path', currentPath);
 
         const initRes = await fetch('/api/upload/init', { method: 'POST', body: initForm });
         if (!initRes.ok) throw new Error("Khởi tạo upload thất bại!");
